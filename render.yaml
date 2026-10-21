@@ -1,0 +1,35 @@
+services:
+  - type: keyvalue
+    name: laliga-brains-render-kv
+    region: frankfurt
+    plan: free
+    maxmemoryPolicy: noeviction
+
+  - type: web
+    name: laliga-brains-render
+    runtime: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: laliga-brains-render-kv
+          property: connectionString
+      - key: FIREBASE_API_KEY
+        value: AIzaSyA_VPCvZah7MJJA1hmzBeAwnSDvZ1nbY5Y
+      - key: FIREBASE_DATABASE_URL
+        value: https://laliga-brains-default-rtdb.europe-west1.firebasedatabase.app
+      - key: FIREBASE_PROJECT_ID
+        value: laliga-brains
+      - key: PIERO_EMAIL
+        sync: false
+      - key: PIERO_PIN_SHA512
+        sync: false
+      - key: PIERO_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: CRON_SECRET
+        generateValue: true
