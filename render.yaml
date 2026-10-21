@@ -3,6 +3,7 @@ services:
     name: laliga-brains-render-kv
     region: frankfurt
     plan: free
+    ipAllowList: []
     maxmemoryPolicy: noeviction
 
   - type: web
