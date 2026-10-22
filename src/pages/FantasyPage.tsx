@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDownLeft, ArrowUpRight, BadgeEuro, CircleHelp, Coins, Crown, RefreshCw, Search, ShieldCheck, ShoppingBag, Sparkles, X } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, BadgeEuro, CircleHelp, Coins, Crown, RefreshCw, Search, ShieldCheck, ShoppingBag, Sparkles, UserPlus, X } from "lucide-react";
 import { useAuth } from "../app/AuthContext";
 import { database } from "../services/firebase/client";
 import { apiRequest } from "../services/api/client";
@@ -17,6 +17,8 @@ export function FantasyPage() {
   const { user } = useAuth();
   const [players, setPlayers] = useState<FantasyPlayer[]>([]);
   const [roster, setRoster] = useState<FantasyPlayer[]>([]);
+  const [rosterLimit, setRosterLimit] = useState(5);
+  const [extraSlots, setExtraSlots] = useState(0);
   const [offers, setOffers] = useState<FantasyOffer[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,6 +26,7 @@ export function FantasyPage() {
   const [search, setSearch] = useState("");
   const [marketFilter, setMarketFilter] = useState<"all" | "available" | "owned">("all");
   const [investments, setInvestments] = useState<Record<string, number>>({});
+  const [withdrawals, setWithdrawals] = useState<Record<string, number>>({});
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [walletError, setWalletError] = useState("");
   const [offerDraft, setOfferDraft] = useState<OfferDraft | null>(null);
@@ -32,10 +35,12 @@ export function FantasyPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const result = await apiRequest<{ players: FantasyPlayer[]; roster: FantasyPlayer[]; offers: FantasyOffer[] }>("fantasy-action", undefined, { method: "GET" });
+      const result = await apiRequest<{ players: FantasyPlayer[]; roster: FantasyPlayer[]; offers: FantasyOffer[]; rosterLimit?: number; extraSlots?: number }>("fantasy-action", undefined, { method: "GET" });
       setPlayers(result.players);
       setRoster(result.roster);
       setOffers(result.offers);
+      setRosterLimit(Number.isSafeInteger(result.rosterLimit) && Number(result.rosterLimit) >= 5 ? Number(result.rosterLimit) : 5);
+      setExtraSlots(Number.isSafeInteger(result.extraSlots) && Number(result.extraSlots) >= 0 ? Number(result.extraSlots) : 0);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo cargar el mercado.");
     } finally {
@@ -106,10 +111,27 @@ export function FantasyPage() {
         : action === "sell" ? "Jugador liberado al mercado."
         : action === "buyout" ? "Cláusula pagada y traspaso completado."
         : action === "offer" ? "Oferta enviada sin reservar monedas."
+        : action === "withdrawInvestment" ? "Inversión retirada y monedas devueltas al monedero."
         : "Inversión añadida al valor del jugador.");
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo completar el movimiento.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const nextSlotPrice = [500, 5000, 50000][Math.min(extraSlots, 2)] ?? 50000;
+  const addRosterSlot = async () => {
+    if (!canAfford(nextSlotPrice)) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await postFantasyAction({ action: "buySquadSlot" });
+      setMessage(`Ampliación comprada por ${money(nextSlotPrice)}. Ya tienes una plaza más.`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "No se pudo ampliar la plantilla.");
     } finally {
       setBusy(false);
     }
@@ -171,7 +193,9 @@ export function FantasyPage() {
   };
 
   const playerName = (id: string) => players.find((player) => player.id === id)?.name ?? "Jugador";
-  const ownedSlots = Array.from({ length: Math.max(0, 5 - roster.length) });
+  const ownedSlots = Array.from({ length: Math.max(0, rosterLimit - roster.length) });
+  const fantasyAssetValue = roster.reduce((total, player) => total + Math.max(0, Number(player.value) || 0), 0);
+  const netWorth = walletBalance === null ? null : walletBalance + fantasyAssetValue;
 
   return <section className="feature-page fantasy-page">
     <div className="fantasy-hero">
@@ -188,8 +212,8 @@ export function FantasyPage() {
 
     <div className="fantasy-wallet-strip">
       <div className="fantasy-wallet-emblem"><Coins size={22} /></div>
-      <div className="fantasy-wallet-copy"><span>Tu monedero</span><small>Saldo disponible para fichar e invertir</small></div>
-      <strong className="fantasy-wallet-value">{walletBalance === null ? "—" : walletBalance.toLocaleString("es-ES")} <small>monedas</small></strong>
+      <div className="fantasy-wallet-copy"><span>Tu patrimonio Fantasy</span><small>Monedero disponible más el valor actual de tu plantilla</small></div>
+      <div className="fantasy-wallet-figures"><strong className="fantasy-wallet-value">{netWorth === null ? "—" : netWorth.toLocaleString("es-ES")} <small>monedas</small></strong><span>Monedero {walletBalance === null ? "—" : walletBalance.toLocaleString("es-ES")} · Plantilla {fantasyAssetValue.toLocaleString("es-ES")}</span></div>
       <Link to="/perfil" className="fantasy-wallet-link">Ver movimientos <ArrowUpRight size={15} /></Link>
     </div>
     {walletError && <p className="fantasy-alert" role="alert">{walletError}</p>}
@@ -215,9 +239,9 @@ export function FantasyPage() {
               <div className="fantasy-player-identity"><strong>{player.name}</strong><span>{player.ownerUid === user?.uid ? "En tu plantilla" : player.ownerUid ? <>Propietario: <Link className="fantasy-manager-link" to={`/perfil/${encodeURIComponent(player.ownerUid)}`}>{player.ownerName || "Mánager"}{player.ownerUsername ? ` · @${player.ownerUsername}` : ""}</Link><small className="fantasy-owner-count">· {player.ownerFantasyCount ?? 0}/5 jugadores</small></> : player.ghost ? "Perfil de jugador" : "Jugador de 4 ESO"}</span></div>
               <div className="fantasy-player-price"><strong>{player.value.toLocaleString("es-ES")} <small>🪙</small></strong><span>Cláusula {Math.round(player.value * 2).toLocaleString("es-ES")}</span></div>
               <div className="fantasy-market-action">
-                {!player.ownerUid ? <button className="fantasy-button fantasy-button-primary" disabled={busy || roster.length >= 5} title={roster.length >= 5 ? "Tu plantilla ya tiene cinco jugadores" : undefined} onClick={() => void act("buy", player.id)}><ShoppingBag size={15} /> Fichar</button>
+                {!player.ownerUid ? <button className="fantasy-button fantasy-button-primary" disabled={busy || roster.length >= rosterLimit} title={roster.length >= rosterLimit ? "Tu plantilla está completa; compra una plaza adicional" : undefined} onClick={() => void act("buy", player.id)}><ShoppingBag size={15} /> Fichar</button>
                   : player.ownerUid === user?.uid ? <span className="fantasy-owned-badge"><ShieldCheck size={14} /> En tu equipo</span>
-                  : <div className="fantasy-action-stack"><button className="fantasy-button fantasy-button-outline" disabled={busy || roster.length >= 5} onClick={() => void act("buyout", player.id)}>Rescatar</button><button className="fantasy-text-action" disabled={busy || roster.length >= 5} onClick={() => setOfferDraft({ mode: "offer", playerId: player.id, playerName: player.name, amount: String(player.value) })}>Hacer oferta</button></div>}
+                  : <div className="fantasy-action-stack"><button className="fantasy-button fantasy-button-outline" disabled={busy || roster.length >= rosterLimit} onClick={() => void act("buyout", player.id)}>Rescatar</button><button className="fantasy-text-action" disabled={busy || roster.length >= rosterLimit} onClick={() => setOfferDraft({ mode: "offer", playerId: player.id, playerName: player.name, amount: String(player.value) })}>Hacer oferta</button></div>}
               </div>
             </article>)
               : <div className="fantasy-empty"><Search size={25} /><strong>{players.length ? "No hay resultados" : "El mercado está vacío"}</strong><small>{players.length ? "Prueba con otro nombre o filtro." : "Los jugadores de 4 ESO aparecerán aquí cuando estén disponibles."}</small></div>}
@@ -229,20 +253,23 @@ export function FantasyPage() {
         <section className="fantasy-panel fantasy-squad-panel">
           <div className="fantasy-panel-heading fantasy-squad-heading">
             <div><span className="fantasy-section-kicker">TU EQUIPO</span><h2>Mi plantilla</h2></div>
-            <div className="fantasy-squad-count"><strong>{roster.length}</strong><span>/ 5</span></div>
+            <div className="fantasy-squad-count"><strong>{roster.length}</strong><span>/ {rosterLimit}</span></div>
           </div>
-          <div className="fantasy-squad-progress"><span style={{ width: `${Math.min(100, roster.length * 20)}%` }} /></div>
-          <p className="fantasy-squad-caption">{roster.length === 5 ? "Plantilla completa" : `Te ${5 - roster.length === 1 ? "queda" : "quedan"} ${5 - roster.length} ${5 - roster.length === 1 ? "plaza" : "plazas"} disponibles`}</p>
+          <div className="fantasy-squad-progress"><span style={{ width: `${Math.min(100, roster.length / Math.max(rosterLimit, 1) * 100)}%` }} /></div>
+          <p className="fantasy-squad-caption">{roster.length === rosterLimit ? "Plantilla completa" : `Te ${rosterLimit - roster.length === 1 ? "queda" : "quedan"} ${rosterLimit - roster.length} ${rosterLimit - roster.length === 1 ? "plaza" : "plazas"} disponibles`}</p>
+          <div className="fantasy-slot-upgrade"><div><strong>Ampliar plantilla</strong><small>Una plaza permanente · próxima: {money(nextSlotPrice)}</small></div><button className="fantasy-button fantasy-button-outline" disabled={busy} onClick={() => void addRosterSlot()}><UserPlus size={15}/> Añadir plaza</button></div>
+          <p className="fantasy-slot-pricing">Coste por plaza extra: 500, 5.000 y 50.000 monedas; las siguientes también cuestan 50.000. El fichaje del jugador se paga aparte.</p>
           <div className="fantasy-roster-list">
             {roster.map((player) => <article className="fantasy-roster-player" key={player.id}>
               <div className="fantasy-player-mark roster-mark" aria-hidden="true">{player.name.trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toLocaleUpperCase("es-ES") || "J"}</div>
               <div className="fantasy-player-identity"><strong>{player.name}</strong><span>Valor actual · {money(player.value)}</span><small>Inversión permanente · {money(player.permanentInvestment ?? 0)}</small></div>
               <button className="fantasy-icon-action" aria-label={`Vender a ${player.name} al mercado`} title="Vender al mercado" disabled={busy} onClick={() => void act("sell", player.id)}><ArrowDownLeft size={16} /></button>
               <div className="fantasy-invest-control"><label htmlFor={`invest-${player.id}`}>Invertir</label><span className="fantasy-invest-input"><input id={`invest-${player.id}`} type="number" inputMode="numeric" min="1" step="1" value={investments[player.id] ?? 10} onChange={(event) => setInvestments({ ...investments, [player.id]: Number(event.target.value) })} aria-label={`Monedas para invertir en ${player.name}`} /><button disabled={busy} onClick={() => void act("invest", player.id, investments[player.id] ?? 10)}>Añadir</button></span></div>
+              {(player.permanentInvestment ?? 0) > 0 && <div className="fantasy-invest-control fantasy-withdraw-control"><label htmlFor={`withdraw-${player.id}`}>Retirar inversión</label><span className="fantasy-invest-input"><input id={`withdraw-${player.id}`} type="number" inputMode="numeric" min="1" max={player.permanentInvestment} step="1" value={withdrawals[player.id] ?? player.permanentInvestment} onChange={(event) => setWithdrawals({ ...withdrawals, [player.id]: Number(event.target.value) })} aria-label={`Monedas de inversión para retirar de ${player.name}`} /><button disabled={busy} onClick={() => void act("withdrawInvestment", player.id, withdrawals[player.id] ?? player.permanentInvestment)}>Retirar</button></span><small>El valor del jugador bajará en la misma cantidad.</small></div>}
             </article>)}
             {ownedSlots.map((_, index) => <div className="fantasy-empty-slot" key={`slot-${index}`}><span className="fantasy-slot-plus">+</span><span>Espacio libre</span><small>Ficha a un jugador del mercado</small></div>)}
           </div>
-          {!roster.length && <div className="fantasy-squad-note"><Crown size={17} /><span>Tu equipo empieza con cinco plazas. Elige jugadores del mercado para completar la plantilla.</span></div>}
+          {!roster.length && <div className="fantasy-squad-note"><Crown size={17} /><span>Tu equipo empieza con cinco plazas. Elige jugadores del mercado para completar la plantilla o amplíala para fichar más.</span></div>}
         </section>
 
         <section className="fantasy-panel fantasy-transfer-panel">
@@ -259,7 +286,7 @@ export function FantasyPage() {
       </aside>
     </div>
 
-    {message && <div className={`fantasy-message ${/^(Saldo insuficiente|No se|Tu plantilla|Este jugador|El comprador|No eres|Solo puedes|La oferta|La contraoferta|La inversión|Espera|Escribe|No tienes|La operación)/.test(message) ? "is-error" : "is-success"}`} role="status"><span>{message}</span><button aria-label="Cerrar aviso" onClick={() => setMessage("")}><X size={16} /></button></div>}
+    {message && <div className={`fantasy-message ${/^(Saldo insuficiente|No se|Tu plantilla|Este jugador|El comprador|No eres|Solo puedes|La oferta|La contraoferta|La inversión|La retirada|Espera|Escribe|No tienes|La operación)/.test(message) ? "is-error" : "is-success"}`} role="status"><span>{message}</span><button aria-label="Cerrar aviso" onClick={() => setMessage("")}><X size={16} /></button></div>}
 
     {offerDraft && <div className="fantasy-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setOfferDraft(null); }}>
       <section className="fantasy-offer-modal" role="dialog" aria-modal="true" aria-labelledby="offer-modal-title">

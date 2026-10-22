@@ -3,6 +3,7 @@ import type { Handler } from "../lib/runtime-types";
 import { firebaseDb } from "../lib/firebase-rest";
 import { requirePiero } from "../lib/authentication";
 import { applyWalletDelta, mutateEconomy, REGISTRATION_BONUS, type EconomyState } from "../lib/economy";
+import { resetFantasyEconomyState, retireFantasyPlayerState } from "../lib/fantasy-reset";
 import { cancelSettledRound, settleRound, type MatchTarget } from "../lib/predictions";
 import { asBadRequest, json, run, bodyOf, methodNotAllowed } from "../lib/http";
 import { currentMatchForProjection, mergeMissingMatchRows, normalizeMatchRewards } from "../lib/match-action";
@@ -64,8 +65,14 @@ export const handler: Handler = async (event) => run(async () => {
   if (action === "createMatch" || action === "editMatch" || action === "deleteMatch") result = await manageMatch(action, body, user.uid);
   else if (action === "createGhostPlayer") result = await createGhostPlayer(body, user.uid);
   else if (action === "archiveGhostPlayer") result = await archiveGhostPlayer(body, user.uid);
+  else if (action === "retirePlayer") result = await retirePlayer(body, user.uid);
   else if (action === "restoreGhostPlayer") result = await restoreGhostPlayer(body, user.uid);
+  else if (action === "resetFantasyEconomy") result = await resetFantasyEconomy(body, user.uid);
   else if (action === "permanentlyDeleteGhostPlayer") result = await permanentlyDeleteGhostPlayer(body, user.uid);
+  else if (action === "deleteGhostPlayer") {
+    await archiveGhostPlayer(body, user.uid);
+    result = await permanentlyDeleteGhostPlayer(body, user.uid);
+  }
   else if (action === "adjustPlayerGoals") result = await adjustPlayerGoals(body, user.uid);
   else if (action === "mergePlayer") result = await mergePlayer(body, user.uid);
   else if (action === "coinAdjust") result = await adjustCoins(body, user.uid);
@@ -84,8 +91,9 @@ async function manageMatch(action: string, body: Record<string, unknown>, actorU
   if (action !== "createMatch" && !/^[a-zA-Z0-9_-]{1,128}$/.test(matchId)) throw asBadRequest("Indica un partido válido para corregir.");
   const suppliedIdempotencyKey = String(body.idempotencyKey ?? "");
   if (suppliedIdempotencyKey && !/^[a-f0-9-]{36}$/i.test(suppliedIdempotencyKey)) throw asBadRequest("La clave de repetición no es válida.");
-  // This is an operation ID, not a secret. Newer clients supply a UUID;
-  // older clients get a deterministic server-side fallback when metadata is absent.
+  // This is an operation ID, not a secret or a Cloudflare setting. Newer
+  // clients supply a UUID; old Safari tabs get a deterministic server-side
+  // fallback so missing client metadata never blocks a match correction.
   const fallbackBucket = action === "deleteMatch" ? "stable" : String(Math.floor(Date.now() / 30_000));
   const fallbackMaterial = JSON.stringify({
     action, actorUid, matchId: action === "createMatch" ? "new" : matchId, bucket: fallbackBucket,
@@ -371,6 +379,69 @@ async function createGhostPlayer(body: Record<string, unknown>, actorUid: string
   return { playerId: id, value: 50 };
 }
 
+async function retirePlayer(body: Record<string, unknown>, actorUid: string) {
+  const playerId = String(body.playerId ?? "");
+  const idempotencyKey = String(body.idempotencyKey ?? "");
+  if (!/^[a-zA-Z0-9_-]{3,128}$/.test(playerId)) throw asBadRequest("Selecciona un jugador válido.");
+  if (!/^[a-f0-9-]{36}$/i.test(idempotencyKey)) throw asBadRequest("La clave de repetición no es válida.");
+  const profileRef = firebaseDb.ref(`laligaBrains/identity/playerProfiles/${playerId}`);
+  const profile = (await profileRef.get()).val() as { team?: string; ghost?: boolean; unknown?: boolean; archived?: boolean } | null;
+  if (!profile || profile.team !== "4ESO" || profile.unknown) throw asBadRequest("Solo se pueden retirar perfiles activos de jugadores de 4 ESO.");
+  if (profile.archived) return { playerId, archived: true, duplicate: true };
+
+  // Mark the football identity first. Match writes check this same transaction
+  // subtree before accepting future goals for a retired player.
+  const archivedAt = Date.now();
+  const footballRef = firebaseDb.ref("laligaBrains/football/state");
+  const footballTx = await footballRef.transaction((raw) => {
+    const state = { matches: {}, actions: {}, audit: {}, ...(raw ?? {}) } as FootballState;
+    state.archivedPlayers ??= {};
+    if (state.archivedPlayers[playerId]) return state;
+    state.archivedPlayers[playerId] = { archivedAt, archivedBy: actorUid };
+    return state;
+  }, undefined, false);
+  const footballState = footballTx.snapshot.val() as FootballState | null;
+  if (!footballTx.committed && !footballState?.archivedPlayers?.[playerId]) throw Object.assign(new Error("No se pudo retirar el jugador; inténtalo de nuevo."), { statusCode: 409 });
+
+  let result: ReturnType<typeof retireFantasyPlayerState>;
+  try {
+    result = await mutateEconomy((state) => retireFantasyPlayerState(state, playerId, actorUid, idempotencyKey, archivedAt));
+  } catch (error) {
+    // Only roll back the football lock when this request created it and the
+    // economy transaction did not complete. A later retry can heal old partial state.
+    if (footballTx.committed) await firebaseDb.ref("laligaBrains/football/state/archivedPlayers").child(playerId).remove().catch(() => undefined);
+    throw error;
+  }
+  const updates: Record<string, unknown> = {
+    [`laligaBrains/identity/playerProfiles/${playerId}/archived`]: true,
+    [`laligaBrains/identity/playerProfiles/${playerId}/archivedAt`]: archivedAt,
+    [`laligaBrains/identity/playerProfiles/${playerId}/archivedBy`]: actorUid,
+  };
+  if (profile.ghost) {
+    updates[`laligaBrains/identity/ghostPlayers/${playerId}/archived`] = true;
+    updates[`laligaBrains/identity/ghostPlayers/${playerId}/archivedAt`] = archivedAt;
+    updates[`laligaBrains/identity/ghostPlayers/${playerId}/archivedBy`] = actorUid;
+  }
+  await firebaseDb.ref().update(updates);
+  return { ...result, archivedAt };
+}
+
+async function resetFantasyEconomy(body: Record<string, unknown>, actorUid: string) {
+  const idempotencyKey = String(body.idempotencyKey ?? "");
+  if (!/^[a-f0-9-]{36}$/i.test(idempotencyKey)) throw asBadRequest("La clave de repetición no es válida.");
+  if (body.confirmed !== true) throw asBadRequest("Confirma el reinicio de Fantasy.");
+  const usersSnapshot = await firebaseDb.ref("laligaBrains/identity/users").get();
+  const users = (usersSnapshot.val() ?? {}) as Record<string, unknown>;
+  const result = await mutateEconomy((state) => resetFantasyEconomyState(state, Object.keys(users), actorUid, idempotencyKey));
+  await firebaseDb.ref(`laligaBrains/administration/economyResets/${idempotencyKey}`).set({
+    ...result,
+    actorUid,
+    walletBalanceAfter: 120,
+    createdAt: Date.now(),
+  });
+  return result;
+}
+
 async function archiveGhostPlayer(body: Record<string, unknown>, actorUid: string) {
   const playerId = String(body.playerId ?? "");
   if (!/^[a-zA-Z0-9_-]{3,128}$/.test(playerId)) throw asBadRequest("Selecciona un jugador válido.");
@@ -448,8 +519,8 @@ async function restoreGhostPlayer(body: Record<string, unknown>, actorUid: strin
   const playerId = String(body.playerId ?? "");
   if (!/^[a-zA-Z0-9_-]{3,128}$/.test(playerId)) throw asBadRequest("Selecciona un jugador válido.");
   const profileRef = firebaseDb.ref(`laligaBrains/identity/playerProfiles/${playerId}`);
-  const profile = (await profileRef.get()).val() as { team?: string; ghost?: boolean; uid?: string; archived?: boolean } | null;
-  if (!profile?.ghost || profile.team !== "4ESO" || profile.uid || !profile.archived) throw Object.assign(new Error("No se encontró un perfil fantasma archivado."), { statusCode: 404 });
+  const profile = (await profileRef.get()).val() as { team?: string; ghost?: boolean; uid?: string; unknown?: boolean; archived?: boolean } | null;
+  if (!profile || profile.team !== "4ESO" || profile.unknown || !profile.archived) throw Object.assign(new Error("No se encontró un perfil de 4 ESO retirado."), { statusCode: 404 });
   await mutateEconomy((state) => {
     const player = state.fantasyPlayers[playerId];
     if (!player) throw Object.assign(new Error("No se encontró el activo Fantasy de este jugador."), { statusCode: 409 });
@@ -780,5 +851,7 @@ function auditSummary(action: string, body: Record<string, unknown>) {
   if (action === "coinAdjust") return `Ajuste de ${String(body.amount)} monedas.`;
   if (action === "createMatch" || action === "editMatch") return `Resultado ${String(body.score3ESO)}–${String(body.score4ESO)}.`;
   if (action === "setEnhancedSecurity") return `Seguridad mejorada: ${String(body.enabled)}.`;
+  if (action === "retirePlayer") return "Perfil de jugador retirado; se conservan la cuenta y el historial de goles.";
+  if (action === "resetFantasyEconomy") return "Economía Fantasy reiniciada: saldos a 120, valores a 50 y plantillas liberadas.";
   return "Acción administrativa registrada.";
 }

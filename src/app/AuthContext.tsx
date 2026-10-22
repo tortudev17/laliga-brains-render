@@ -15,6 +15,7 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const SESSION_CHECK_TIMEOUT_MS = 5000;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -23,6 +24,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let profileUnsubscribe: (() => void) | undefined;
+    let sessionCheckFinished = false;
+    const finishSessionCheck = () => {
+      if (sessionCheckFinished) return;
+      sessionCheckFinished = true;
+      window.clearTimeout(sessionCheckTimer);
+      setLoading(false);
+    };
+    const sessionCheckTimer = window.setTimeout(finishSessionCheck, SESSION_CHECK_TIMEOUT_MS);
     const authUnsubscribe = onAuthStateChanged(auth, (nextUser) => {
       profileUnsubscribe?.();
       profileUnsubscribe = undefined;
@@ -36,16 +45,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (nextProfile.accountStatus !== "active" && nextUser.email?.toLowerCase() !== "holam@secure.com") void signOut(auth);
           }
           else { setProfile(null); void signOut(auth); }
-          setLoading(false);
+          finishSessionCheck();
         }, (error) => {
           console.error("No se pudo comprobar el estado de la cuenta.", error);
-          setLoading(false);
+          finishSessionCheck();
         });
       } else {
-        setLoading(false);
+        finishSessionCheck();
       }
+    }, (error) => {
+      console.error("No se pudo comprobar la sesión.", error);
+      finishSessionCheck();
     });
-    return () => { authUnsubscribe(); profileUnsubscribe?.(); };
+    return () => { window.clearTimeout(sessionCheckTimer); authUnsubscribe(); profileUnsubscribe?.(); };
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({

@@ -36,3 +36,8 @@
 .manager-profile-skeleton{min-height:260px}
 @keyframes manager-profile-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:620px){.manager-profile-page{padding-top:0}.manager-back-link{margin-bottom:13px}.manager-profile-header{align-items:flex-start;gap:13px;padding:17px 15px;border-radius:10px}.manager-profile-avatar{width:59px!important;height:59px!important;flex:0 0 59px}.manager-profile-kicker{font-size:8px}.manager-profile-identity h1{font-size:23px}.manager-profile-identity p{font-size:10px}.manager-profile-role{position:absolute;right:12px;bottom:12px;padding:6px 8px;font-size:8px}.manager-profile-stat{gap:9px;margin:11px 0;padding:13px;border-radius:9px}.manager-profile-stat>span{width:36px;height:36px}.manager-profile-stat small{font-size:9px}.manager-profile-stat strong{font-size:19px}.manager-profile-progress{margin-left:auto}.manager-profile-section-heading{padding:15px}.manager-profile-player-list{grid-template-columns:1fr;padding:11px;gap:7px}.manager-profile-player{grid-template-columns:35px minmax(0,1fr) auto;min-height:59px;padding:8px}.manager-profile-player-mark{width:34px;height:34px;font-size:10px}}
+.manager-profile-total{display:grid;gap:3px;margin-left:12px;text-align:right;white-space:nowrap}
+.manager-profile-total small{color:#d2dceb;font-size:9px}
+.manager-profile-total strong{color:#fff;font:800 15px Manrope,sans-serif}
+.manager-profile-total em{color:#e7c35e;font-size:9px;font-style:normal}
+@media(max-width:620px){.manager-profile-total{margin-left:0}.manager-profile-total strong{font-size:12px}.manager-profile-total small{font-size:8px}}

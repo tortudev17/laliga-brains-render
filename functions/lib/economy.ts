@@ -1,5 +1,5 @@
 import { firebaseDb } from "./firebase-rest";
-import { applyWalletDelta, emptyEconomy, type EconomyState } from "./economy-core";
+import { applyWalletDelta, calculateFantasyAssetValue, calculateNetWorth, emptyEconomy, type EconomyState } from "./economy-core";
 export { applyWalletDelta, emptyEconomy } from "./economy-core";
 export type { EconomyState } from "./economy-core";
 
@@ -21,9 +21,13 @@ export async function mutateEconomy<T>(operation: (state: EconomyState) => T): P
 
 async function mirrorEconomy(state: EconomyState) {
   const updates: Record<string, unknown> = {};
-  for (const [uid, balance] of Object.entries(state.wallets)) {
+  const accountUids = new Set(Object.keys(state.wallets));
+  for (const player of Object.values(state.fantasyPlayers ?? {})) if (typeof player.ownerUid === "string") accountUids.add(player.ownerUid);
+  for (const uid of accountUids) {
+    const balance = Number(state.wallets[uid] ?? 0);
+    const assetValue = calculateFantasyAssetValue(state, uid);
     updates[`laligaBrains/economy/wallets/${uid}`] = { balance, updatedAt: Date.now() };
-    updates[`laligaBrains/leaderboards/richest/${uid}`] = { balance };
+    updates[`laligaBrains/leaderboards/richest/${uid}`] = { balance, assetValue, netWorth: calculateNetWorth(balance, assetValue) };
   }
   for (const [id, transaction] of Object.entries(state.ledger)) for (const [ledgerId, item] of Object.entries(transaction)) {
     updates[`laligaBrains/economy/ledger/${id}/${ledgerId}`] = item;

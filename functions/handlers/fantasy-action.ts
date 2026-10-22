@@ -3,6 +3,7 @@ import type { Handler } from "../lib/runtime-types";
 import { firebaseDb } from "../lib/firebase-rest";
 import { requireUser } from "../lib/authentication";
 import { applyWalletDelta, mutateEconomy, type EconomyState } from "../lib/economy";
+import { fantasyRosterLimit, purchaseFantasySlot, withdrawFantasyInvestment } from "../lib/economy-core";
 import { asBadRequest, asForbidden, json, run, bodyOf, methodNotAllowed } from "../lib/http";
 
 function idempotency(body: Record<string, unknown>) {
@@ -72,7 +73,8 @@ export const handler: Handler = async (event) => run(async () => {
       recipientName: userLabel(String(offer.recipientUid ?? "")).name,
       recipientUsername: userLabel(String(offer.recipientUid ?? "")).username,
     }));
-    return json(200, { players: playersWithOwner, roster, offers: offersWithNames });
+    const rosterLimit = vals ? fantasyRosterLimit(vals, uid) : 5;
+    return json(200, { players: playersWithOwner, roster, offers: offersWithNames, extraSlots: rosterLimit - 5, rosterLimit });
   }
   if (event.httpMethod !== "POST") return methodNotAllowed(["GET", "POST"]);
   const body = bodyOf(event);
@@ -85,8 +87,9 @@ export const handler: Handler = async (event) => run(async () => {
     if (prior) return prior.result;
     const player = state.fantasyPlayers[playerId];
     if (player?.archived === true) throw Object.assign(new Error("Este jugador ya no está disponible en el mercado."), { statusCode: 409 });
-    const rosterCount = () => Object.values(state.fantasyPlayers).filter((item) => item.ownerUid === uid).length;
-    const ensureSlot = () => { if (rosterCount() >= 5) throw Object.assign(new Error("Tu plantilla ya tiene cinco jugadores."), { statusCode: 409 }); };
+    const rosterCount = (managerUid = uid) => Object.values(state.fantasyPlayers).filter((item) => item.ownerUid === managerUid && item.archived !== true).length;
+    const ensureSlot = (managerUid = uid) => { if (rosterCount(managerUid) >= fantasyRosterLimit(state, managerUid)) throw Object.assign(new Error("Tu plantilla está completa. Amplíala para poder fichar otro jugador."), { statusCode: 409 }); };
+    if (action === "buySquadSlot") return purchaseFantasySlot(state, uid, key);
     if (action === "buy") {
       if (!player || player.ownerUid) throw Object.assign(new Error("Este jugador ya no está disponible."), { statusCode: 409 });
       ensureSlot();
@@ -123,12 +126,16 @@ export const handler: Handler = async (event) => run(async () => {
       if (!player || player.ownerUid !== uid) throw asForbidden("Solo puedes invertir en jugadores de tu plantilla.");
       const amount = Number(body.amount);
       if (!Number.isSafeInteger(amount) || amount <= 0) throw asBadRequest("La inversión debe ser un número entero positivo.");
+      const currentInvestment = Number(player.permanentInvestment ?? 0);
+      const currentValue = Number(player.value ?? 50);
       applyWalletDelta(state, uid, -amount, "fantasy_investment", uid, key, playerId);
-      player.permanentInvestment = Number(player.permanentInvestment ?? 0) + amount;
-      player.value = Number(player.value ?? 50) + amount;
+      player.permanentInvestment = currentInvestment + amount;
+      player.value = currentValue + amount;
+      player.performanceValue = Number(player.performanceValue ?? currentValue - currentInvestment);
       player.updatedAt = now;
       return { playerId, value: player.value, investment: player.permanentInvestment };
     }
+    if (action === "withdrawInvestment") return withdrawFantasyInvestment(state, uid, playerId, Number(body.amount), key);
     if (action === "offer") {
       if (!player || player.ownerUid === uid) throw asBadRequest("El jugador no pertenece a otro mánager.");
       ensureSlot();
@@ -171,7 +178,7 @@ export const handler: Handler = async (event) => run(async () => {
       const offeredPlayer = state.fantasyPlayers[String(offer.playerId)];
       if (!offeredPlayer || offeredPlayer.ownerUid !== uid) throw Object.assign(new Error("Ya no eres propietario de este jugador."), { statusCode: 409 });
       const buyerUid = String(offer.buyerUid);
-      if (Object.values(state.fantasyPlayers).filter((item) => item.ownerUid === buyerUid).length >= 5) throw Object.assign(new Error("El comprador ya tiene cinco jugadores."), { statusCode: 409 });
+      if (rosterCount(buyerUid) >= fantasyRosterLimit(state, buyerUid)) throw Object.assign(new Error("El comprador ya tiene completa su plantilla."), { statusCode: 409 });
       const amount = Number(offer.amount);
       applyWalletDelta(state, buyerUid, -amount, "fantasy_transfer", uid, `${key}:buyer`, String(offer.playerId));
       applyWalletDelta(state, uid, amount, "fantasy_transfer_received", uid, `${key}:seller`, String(offer.playerId));

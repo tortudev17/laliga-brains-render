@@ -39,6 +39,17 @@
 .fantasy-offer-participants{display:grid;gap:4px;margin-top:8px;color:#808b9a;font-size:9px;line-height:1.4}
 .fantasy-offer-participants a{color:#31577c;font-weight:700;text-decoration:underline;text-decoration-color:#d5dee8;text-underline-offset:2px;overflow-wrap:anywhere}
 .fantasy-offer-participants a:hover{color:#9a7527}
+.fantasy-wallet-figures{display:grid;justify-items:end;gap:4px;margin-left:auto}
+.fantasy-wallet-figures .fantasy-wallet-value{margin-left:0}
+.fantasy-wallet-figures>span{color:#d4ddea;font-size:9px;white-space:nowrap}
+.fantasy-slot-upgrade{display:flex;align-items:center;justify-content:space-between;gap:9px;margin:0 17px;padding:10px 11px;border:1px solid #e8edf2;border-radius:8px;background:#fbfcfd}
+.fantasy-slot-upgrade>div{display:grid;gap:3px;min-width:0}
+.fantasy-slot-upgrade>div strong{color:#334760;font-size:10px}
+.fantasy-slot-upgrade>div small{color:#8792a1;font-size:8px;line-height:1.35}
+.fantasy-slot-upgrade .fantasy-button{min-height:31px;flex:none}
+.fantasy-slot-pricing{margin:6px 18px 10px;color:#8994a2;font-size:8px;line-height:1.4}
+.fantasy-withdraw-control{flex-wrap:wrap;padding-top:7px;border-top:1px solid #eef1f4}
+.fantasy-withdraw-control>small{flex:1 0 100%;color:#8994a2;font-size:8px;font-weight:500;text-align:right}
 @media(max-width:620px){
   .fantasy-page .fantasy-hero{min-height:139px;margin-bottom:15px;padding:17px 0 13px;border-radius:0}
   .fantasy-page .fantasy-hero h1{font-size:32px}
@@ -46,6 +57,13 @@
   .fantasy-page .fantasy-refresh{right:0;bottom:10px}
   .fantasy-wallet-strip{min-height:76px;margin:0 0 16px;padding:10px 11px;border-radius:9px;gap:8px}
   .fantasy-wallet-copy small{max-width:128px}
+  .fantasy-wallet-figures{gap:2px}
+  .fantasy-wallet-figures .fantasy-wallet-value{font-size:16px}
+  .fantasy-wallet-figures>span{max-width:150px;font-size:7px;white-space:normal;text-align:right}
+  .fantasy-withdraw-control>small{font-size:7px}
+  .fantasy-slot-upgrade{margin:0 11px;padding:9px}
+  .fantasy-slot-upgrade .fantasy-button{font-size:8px}
+  .fantasy-slot-pricing{margin-left:12px;margin-right:12px}
   .fantasy-player-identity{overflow-wrap:anywhere}
   .fantasy-player-identity span{white-space:normal}
   .fantasy-owner-count{display:block!important;margin:3px 0 0!important}

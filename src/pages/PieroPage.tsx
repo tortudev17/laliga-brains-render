@@ -2,14 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowLeft, BadgeEuro, CalendarDays, Check, Coins, LayoutDashboard, LockKeyhole, LogOut, Pencil, RefreshCw, Settings, Shield, ShieldCheck, Trash2, Trophy, UserPlus, Users, X } from "lucide-react";
 import { apiRequest } from "../services/api/client";
+import { PageLoading } from "../components/PageLoading";
 import type { ManualGoalAdjustment, MatchRecord, UserRole } from "../types/domain";
 
 type AdminData = {
-  users: Array<{ uid: string; username: string; role: UserRole; accountStatus: string; createdAt: number; recommendationPriority?: "low" | "normal" | "high" }>;
+  users: Array<{ uid: string; username: string; role: UserRole; accountStatus: string; createdAt: number; recommendationPriority?: "low" | "normal" | "high"; walletBalance: number; assetValue: number; netWorth: number }>;
   pendingApprovals: Array<{ id: string; uid: string; username: string; role: string; status: string }>;
   matches: Array<MatchRecord & { dateKey?: string }>;
   players: Array<{ id: string; name: string; team: string; ghost: boolean; unknown?: boolean; uid?: string }>;
-  archivedPlayers: Array<{ id: string; name: string; ghost: boolean; archivedAt?: number }>;
+  archivedPlayers: Array<{ id: string; name: string; ghost: boolean; unknown?: boolean; uid?: string; archivedAt?: number }>;
   manualGoalAdjustments: ManualGoalAdjustment[];
   fantasyPlayers: Array<{ id: string; name: string; value: number; ownerUid?: string; ownerName?: string; ownerUsername?: string; permanentInvestment?: number }>;
   fantasyOffers: Array<{ id: string; playerId: string; creatorUid: string; creatorName: string; creatorUsername: string; recipientUid: string; recipientName: string; recipientUsername: string; amount: number; status: string; createdAt: number }>;
@@ -42,6 +43,8 @@ export function PieroPage() {
   const [messageType, setMessageType] = useState<"success" | "error">("success");
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState<AdminData | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState("");
   const [tab, setTab] = useState<AdminTab>("Panel general");
   const [score3ESO, setScore3ESO] = useState(0);
   const [score4ESO, setScore4ESO] = useState(0);
@@ -60,17 +63,25 @@ export function PieroPage() {
 
   const headers = useMemo(() => ({ "x-piero-session": session }), [session]);
   const fetchAdminData = async (token = session) => {
-    if (!token) return;
-    const result = await apiRequest<AdminData>("piero-data", undefined, { method: "GET", headers: { "x-piero-session": token }, auth: null });
-    setData(result);
+    if (!token) return false;
+    setDataLoading(true); setDataError("");
+    try {
+      const result = await apiRequest<AdminData>("piero-data", undefined, { method: "GET", headers: { "x-piero-session": token }, auth: null });
+      setData(result);
+      return true;
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : "No se pudieron cargar los datos del panel.");
+      return false;
+    } finally { setDataLoading(false); }
   };
-  const runAdminAction = async (body: Record<string, unknown>) => {
+  const runAdminAction = async (body: Record<string, unknown>, successMessage = "Cambios guardados.") => {
     setBusy(true); setMessage("");
     try {
       const result = await apiRequest<{ result?: unknown }>("piero-admin", body, { headers, auth: null });
       setMessageType("success");
-      setMessage("Cambios guardados.");
-      await fetchAdminData();
+      setMessage(successMessage);
+      const refreshed = await fetchAdminData();
+      if (!refreshed) { setMessageType("error"); setMessage("La acción se guardó, pero no se pudieron actualizar los datos. Pulsa Actualizar datos para volver a cargarlos."); }
       return result;
     } catch (error) { setMessageType("error"); setMessage(error instanceof Error ? error.message : "No se pudo completar la acción."); return null; }
     finally { setBusy(false); }
@@ -86,7 +97,7 @@ export function PieroPage() {
 
   async function lock() {
     const activeSession = session;
-    setUnlocked(false); setSession(""); setData(null); setPin(""); setPassword(""); setUnlockStep("pin");
+    setUnlocked(false); setSession(""); setData(null); setDataError(""); setPin(""); setPassword(""); setUnlockStep("pin");
     setPinChallenge("");
     if (activeSession) try { await apiRequest("piero-lock", {}, { headers: { "x-piero-session": activeSession }, auth: null }); } catch { /* La sesión también caduca en el servidor. */ }
   }
@@ -107,7 +118,7 @@ export function PieroPage() {
     try {
       const result = await apiRequest<{ sessionToken: string }>("piero-login", { challengeId: pinChallenge, password }, { auth: null });
       createdSession = result.sessionToken;
-      await fetchAdminData(result.sessionToken);
+      if (!await fetchAdminData(result.sessionToken)) throw new Error("La sesión se validó, pero no se pudieron cargar los datos del panel.");
       setSession(result.sessionToken); setUnlocked(true); setPin(""); setPassword(""); setPinChallenge(""); setMessage("");
     } catch (error) {
       if (createdSession) void apiRequest("piero-lock", {}, { headers: { "x-piero-session": createdSession }, auth: null }).catch(() => undefined);
@@ -152,7 +163,7 @@ export function PieroPage() {
   return <div className="piero-admin-shell">
     <header className="piero-admin-header">
       <Link to="/" className="piero-admin-brand"><span className="piero-brand-mark"><Shield size={20}/></span><span><strong>LaLiga Brains</strong><small>Administración</small></span></Link>
-      <div className="piero-admin-header-actions"><span className="piero-active-status"><i/>Sesión activa</span><button className="piero-header-button" onClick={() => void fetchAdminData()} aria-label="Actualizar panel"><RefreshCw size={17}/>Actualizar</button><button className="piero-exit-button" onClick={() => void lock()}><LogOut size={17}/>Salir del Modo Piero</button></div>
+      <div className="piero-admin-header-actions"><span className="piero-active-status"><i/>Sesión activa</span><button className="piero-header-button" disabled={dataLoading} onClick={() => void fetchAdminData()} aria-label="Actualizar panel"><RefreshCw size={17}/>{dataLoading?"Actualizando…":"Actualizar"}</button><button className="piero-exit-button" onClick={() => void lock()}><LogOut size={17}/>Salir del Modo Piero</button></div>
     </header>
     <div className="piero-admin-layout">
       <aside className="piero-admin-sidebar">
@@ -161,7 +172,9 @@ export function PieroPage() {
         <div className="piero-sidebar-security"><ShieldCheck size={18}/><div><strong>Sesión protegida</strong><span>Bloqueo tras 15 min sin actividad</span></div></div>
       </aside>
       <main className="piero-admin-main">
-        <div className="piero-content-heading"><div><h1>{tab}</h1><p>{adminTabDescriptions[tab]}</p></div>{tab !== "Panel general" && <button className="piero-refresh-button" onClick={() => void fetchAdminData()}><RefreshCw size={16}/>Actualizar datos</button>}</div>
+        <div className="piero-content-heading"><div><h1>{tab}</h1><p>{adminTabDescriptions[tab]}</p></div>{tab !== "Panel general" && <button className="piero-refresh-button" disabled={dataLoading} onClick={() => void fetchAdminData()}><RefreshCw size={16}/>{dataLoading?"Actualizando…":"Actualizar datos"}</button>}</div>
+        {dataError&&<div className="error-banner admin-data-error" role="alert"><span>{dataError}</span><button className="button button-secondary button-small" disabled={dataLoading} onClick={()=>void fetchAdminData()}>{dataLoading?"Cargando…":"Reintentar"}</button></div>}
+        {dataLoading&&!data&&<PageLoading label="Cargando el panel de administración…"/>}
         {tab === "Panel general" && <>
           <div className="admin-welcome"><Shield size={21}/><div><h2>Sesión administrativa activa</h2><p>Las acciones quedan asociadas a la cuenta Piero. El panel se bloquea tras 15 minutos de inactividad.</p></div></div>
           <div className="admin-summary"><Summary icon={<Users size={18}/>} label="Usuarios" value={data?.users.length ?? "—"}/><Summary icon={<Check size={18}/>} label="Aprobaciones pendientes" value={data?.pendingApprovals.length ?? "—"}/><Summary icon={<Trophy size={18}/>} label="Partidos registrados" value={data?.matches.length ?? "—"}/><Summary icon={<Coins size={18}/>} label="Movimientos recientes" value={data?.recentCoinActivity.length ?? "—"}/></div>
@@ -183,8 +196,8 @@ export function PieroPage() {
       </form></section>
       <section className="admin-card"><h2>Historial de goles manuales</h2>{data?.manualGoalAdjustments.length?data.manualGoalAdjustments.slice(0,12).map((adjustment)=><div className="admin-list-row" key={adjustment.id}><div><strong>{adjustment.playerName} · {adjustment.amount>0?"+":""}{adjustment.amount} {Math.abs(adjustment.amount)===1?"gol":"goles"}</strong><span>{adjustment.reason} · {new Intl.DateTimeFormat("es-ES",{dateStyle:"short",timeStyle:"short",timeZone:"Europe/Madrid"}).format(adjustment.createdAt)}</span></div></div>):<div className="admin-empty">Todavía no hay ajustes manuales.</div>}</section>
       <section className="admin-card"><h2>Combinar perfil fantasma</h2><form onSubmit={(event)=>{event.preventDefault();void runAdminAction({action:"mergePlayer",playerId:mergePlayerId,uid:mergeUid});}}><label>Jugador fantasma<select required value={mergePlayerId} onChange={(event)=>setMergePlayerId(event.target.value)}><option value="">Elige un jugador</option>{data?.players.filter((player)=>player.ghost).map((player)=><option key={player.id} value={player.id}>{player.name}</option>)}</select></label><label>Cuenta de jugador de 4 ESO<select required value={mergeUid} onChange={(event)=>setMergeUid(event.target.value)}><option value="">Elige una cuenta</option>{data?.users.filter((user)=>user.role==="player_4eso"&&user.accountStatus==="active").map((user)=><option key={user.uid} value={user.uid}>{user.username}</option>)}</select></label><button className="button button-primary" disabled={busy}>Combinar perfiles</button></form></section>
-      <section className="admin-card"><h2>Perfiles de 4 ESO</h2><div className="admin-match-list">{data?.players.map((player)=><div className="admin-list-row" key={player.id}><div><strong>{player.name}</strong><span>{player.unknown?"Goleador sin identificar":player.ghost?"Jugador fantasma":player.uid?`Cuenta: ${player.uid}`:"Jugador registrado"}</span></div><strong>{player.unknown?"Sin activo Fantasy":`${data?.fantasyPlayers.find((item)=>item.id===player.id)?.value??50} 🪙`}</strong>{player.ghost&&<button className="admin-player-action" disabled={busy} onClick={()=>void runAdminAction({action:"archiveGhostPlayer",playerId:player.id})}>Retirar</button>}</div>)}</div></section>
-      {Boolean(data?.archivedPlayers.length)&&<section className="admin-card"><h2>Perfiles retirados</h2><p className="muted-note">Se ocultan del mercado y de los formularios. Puedes restaurarlos o eliminarlos definitivamente.</p><div className="admin-match-list">{data?.archivedPlayers.map((player)=><div className="admin-list-row" key={player.id}><div><strong>{player.name}</strong><span>Jugador fantasma archivado</span></div><button className="admin-player-action" disabled={busy} onClick={()=>void runAdminAction({action:"restoreGhostPlayer",playerId:player.id})}>Restaurar</button><button className="admin-player-action admin-player-danger" disabled={busy} onClick={()=>{if(window.confirm(`¿Eliminar definitivamente a ${player.name}? Se quitarán el perfil y su activo del mercado.`))void runAdminAction({action:"permanentlyDeleteGhostPlayer",playerId:player.id});}}>Eliminar definitivamente</button></div>)}</div></section>}
+      <section className="admin-card"><h2>Perfiles de 4 ESO</h2><div className="admin-match-list">{data?.players.map((player)=>{const fantasyPlayer=data?.fantasyPlayers.find((item)=>item.id===player.id);return <div className="admin-list-row" key={player.id}><div><strong>{player.name}</strong><span>{player.unknown?"Goleador sin identificar":player.ghost?"Jugador fantasma":player.uid?`Cuenta asociada: ${player.uid}`:"Jugador registrado"}</span></div><strong>{player.unknown?"Sin activo Fantasy":`${fantasyPlayer?.value??50} 🪙`}</strong>{!player.unknown&&<button className="admin-player-action admin-player-danger" disabled={busy} onClick={()=>{const ownerText=fantasyPlayer?.ownerName?` Su mánager (${fantasyPlayer.ownerName}) recibirá ${Number(fantasyPlayer.value??50)} monedas.`:"";if(window.confirm(`¿Retirar a ${player.name} de Fantasy?${ownerText} Se conservarán su cuenta y goles históricos, pero no se podrán asignar goles nuevos mientras esté retirado.`))void runAdminAction({action:"retirePlayer",playerId:player.id,idempotencyKey:crypto.randomUUID()},"Jugador retirado. El perfil y los goles históricos se han conservado.");}}>Retirar</button>}{player.ghost&&<button className="admin-player-action" disabled={busy} onClick={()=>{if(window.confirm(`¿Eliminar definitivamente a ${player.name}? Solo se puede borrar si no tiene goles ni historial Fantasy.`))void runAdminAction({action:"deleteGhostPlayer",playerId:player.id});}}>Eliminar</button>}</div>;})}</div></section>
+      {Boolean(data?.archivedPlayers.length)&&<section className="admin-card"><h2>Jugadores retirados</h2><p className="muted-note">Se ocultan del mercado y de los formularios de partidos. Las cuentas y el historial de goles se conservan.</p><div className="admin-match-list">{data?.archivedPlayers.map((player)=><div className="admin-list-row" key={player.id}><div><strong>{player.name}</strong><span>{player.ghost?"Perfil fantasma retirado":player.uid?"Cuenta conservada": "Perfil de 4 ESO retirado"}</span></div><button className="admin-player-action" disabled={busy} onClick={()=>void runAdminAction({action:"restoreGhostPlayer",playerId:player.id})}>Restaurar</button>{player.ghost&&!player.uid&&<button className="admin-player-action admin-player-danger" disabled={busy} onClick={()=>{if(window.confirm(`¿Eliminar definitivamente a ${player.name}? Se quitarán el perfil y su activo del mercado.`))void runAdminAction({action:"permanentlyDeleteGhostPlayer",playerId:player.id});}}>Eliminar definitivamente</button>}</div>)}</div></section>}
     </div>}
     {tab === "Fantasy" && <div className="admin-grid piero-fantasy-grid">
       <section className="admin-card piero-fantasy-card"><div className="piero-fantasy-card-heading"><div><span>NEGOCIACIÓN</span><h2><BadgeEuro size={19}/>Ofertas recientes</h2></div><strong>{data?.fantasyOffers.length ?? 0}</strong></div>
@@ -210,7 +223,7 @@ export function PieroPage() {
           <button className="button button-secondary button-small" onClick={()=>{const reason=window.prompt("Motivo del bloqueo permanente","");if(reason?.trim()&&window.confirm(`¿Bloquear permanentemente a ${account.username}?`))void runAdminAction({action:"banUser",uid:account.uid,reason});}}>Bloquear permanentemente</button>
         </div></div>)}
     </div></section>}
-    {tab === "Monedas" && <div className="admin-grid"><section className="admin-card"><h2><Coins size={20}/>Ajuste de monedas</h2><form onSubmit={(event)=>{event.preventDefault();void runAdminAction({action:"coinAdjust",uid:coinUid,amount:coinAmount,reason:coinReason});}}><label>Cuenta<select required value={coinUid} onChange={(event)=>setCoinUid(event.target.value)}><option value="">Elige una cuenta</option>{data?.users.map((user)=><option value={user.uid} key={user.uid}>{user.username}</option>)}</select></label><label>Importe (positivo o negativo)<input required type="number" step="1" value={coinAmount} onChange={(event)=>setCoinAmount(Number(event.target.value))}/></label><label>Motivo<input required maxLength={300} value={coinReason} onChange={(event)=>setCoinReason(event.target.value)}/></label><button className="button button-primary">Aplicar ajuste</button></form></section><section className="admin-card"><h2>Integridad de la economía</h2><p>Los saldos se cambian dentro de una transacción atómica del estado económico y se reflejan en el libro de movimientos.</p><div className="admin-empty">Los movimientos recientes se consultan en el libro auditable.</div></section></div>}
+    {tab === "Monedas" && <div className="admin-grid"><section className="admin-card"><h2><Coins size={20}/>Ajuste de monedas</h2><form onSubmit={(event)=>{event.preventDefault();void runAdminAction({action:"coinAdjust",uid:coinUid,amount:coinAmount,reason:coinReason});}}><label>Cuenta<select required value={coinUid} onChange={(event)=>setCoinUid(event.target.value)}><option value="">Elige una cuenta</option>{data?.users.map((user)=><option value={user.uid} key={user.uid}>{user.username} · monedero {user.walletBalance} monedas</option>)}</select></label><label>Importe (positivo o negativo)<input required type="number" step="1" value={coinAmount} onChange={(event)=>setCoinAmount(Number(event.target.value))}/></label><label>Motivo<input required maxLength={300} value={coinReason} onChange={(event)=>setCoinReason(event.target.value)}/></label><button className="button button-primary" disabled={busy}>Aplicar ajuste</button></form></section><section className="admin-card"><h2>Integridad de la economía</h2><p>Los saldos se cambian dentro de una transacción atómica del estado económico y se reflejan en el libro de movimientos.</p><div className="admin-empty">Los movimientos recientes se consultan en el libro auditable.</div></section><section className="admin-card admin-wallet-balances"><h2><Coins size={20}/>Monedero y patrimonio</h2><p>El patrimonio suma las monedas disponibles y el valor actual de los jugadores de Fantasy. Solo el monedero se puede gastar.</p><div className="admin-wallet-list">{data?.users.map((account)=><div className="admin-wallet-row" key={account.uid}><div><strong>{account.username}</strong><span>{roleLabel(account.role)} · {account.accountStatus}</span></div><div className="admin-wallet-values"><span>Monedero <b className={account.walletBalance<0?"wallet-negative":""}>{account.walletBalance.toLocaleString("es-ES")} 🪙</b></span><span>Plantilla <b>{account.assetValue.toLocaleString("es-ES")} 🪙</b></span><strong>Patrimonio <small>{account.netWorth.toLocaleString("es-ES")} 🪙</small></strong></div></div>)}</div>{!data?.users.length&&<div className="admin-empty">Todavía no hay cuentas.</div>}</section><section className="admin-card admin-reset-card"><h2>Reiniciar Fantasy</h2><p>Deja a cada cuenta con <strong>120 monedas</strong>, fija todos los jugadores en <strong>50 monedas</strong> y libera las plantillas. Las ofertas abiertas se cancelan; las cuentas, goles y movimientos históricos se conservan.</p><button className="button button-secondary" disabled={busy} onClick={()=>{if(window.confirm("¿Reiniciar Fantasy para todos? Cada cuenta quedará con 120 monedas, todos los jugadores valdrán 50 y nadie conservará jugadores en su plantilla."))void runAdminAction({action:"resetFantasyEconomy",confirmed:true,idempotencyKey:crypto.randomUUID()},"Reinicio completado: cuentas a 120 monedas, jugadores a 50 y plantillas vacías.");}}>Reiniciar la economía Fantasy</button></section></div>}
     {tab === "Seguridad" && <section className="admin-card"><h2><Settings size={20}/>Configuración</h2><label className="security-toggle"><div><strong>Seguridad mejorada</strong><span>Las cuentas de jugador nuevas requieren aprobación. Los espectadores pueden registrarse sin revisión.</span></div><input type="checkbox" checked={Boolean(data?.enhancedSecurity)} onChange={(event)=>void runAdminAction({action:"setEnhancedSecurity",enabled:event.target.checked})}/></label><p className="muted-note">Las sesiones de Piero caducan tras 15 minutos de inactividad y el PIN se bloquea durante 15 minutos después de cinco intentos fallidos.</p></section>}
         {message&&<p className={`admin-flash ${messageType}`} role={messageType === "error" ? "alert" : "status"}>{message}</p>}
       </main>

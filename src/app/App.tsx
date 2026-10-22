@@ -7,6 +7,7 @@ import { AuthDialog } from "../components/AuthDialog";
 import { apiRequest } from "../services/api/client";
 import { database } from "../services/firebase/client";
 import { UserAvatar } from "../components/UserAvatar";
+import { PageLoading } from "../components/PageLoading";
 
 const HomePage = lazy(() => import("../pages/HomePage").then((module) => ({ default: module.HomePage })));
 const MatchesPage = lazy(() => import("../pages/MatchesPage").then((module) => ({ default: module.MatchesPage })));
@@ -54,7 +55,7 @@ export function App() {
       </div>
     </header>}
     <main className={isPieroRoute ? "piero-route-main" : "page-container"}>
-      <Suspense fallback={<div className="empty-feature">Cargando sección…</div>}>
+      <Suspense fallback={<PageLoading label="Cargando sección…" />}>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/partidos" element={<MatchesPage />} />
@@ -73,7 +74,7 @@ export function App() {
 }
 
 function GatedRoute({ loading, signedIn, children }: { loading: boolean; signedIn: boolean; children: React.ReactNode }) {
-  if (loading) return <div className="empty-feature" role="status">Comprobando sesión…</div>;
+  if (loading) return <PageLoading label="Comprobando sesión…" />;
   return signedIn ? <>{children}</> : <Navigate to="/" replace />;
 }
 

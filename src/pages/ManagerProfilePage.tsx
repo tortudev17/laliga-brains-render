@@ -13,6 +13,8 @@ type ManagerProfile = {
   photoPath: string;
   role: string;
   fantasyPlayerCount: number;
+  fantasyRosterLimit: number;
+  fantasyAssetValue: number;
   fantasyPlayers: Array<{ id: string; name: string; value: number }>;
 };
 
@@ -44,8 +46,9 @@ export function ManagerProfilePage() {
       <div className="manager-profile-role">{roleLabel(profile.role)}</div>
     </header>
     <section className="manager-profile-stat" aria-label="Resumen del equipo Fantasy">
-      <span><Users size={20}/></span><div><small>Jugadores en plantilla</small><strong>{profile.fantasyPlayerCount}<em> / 5</em></strong></div>
-      <div className="manager-profile-progress"><i style={{ width: `${Math.min(100, profile.fantasyPlayerCount * 20)}%` }}/></div>
+      <span><Users size={20}/></span><div><small>Jugadores en plantilla</small><strong>{profile.fantasyPlayerCount}<em> / {profile.fantasyRosterLimit}</em></strong></div>
+      <div className="manager-profile-progress"><i style={{ width: `${Math.min(100, profile.fantasyPlayerCount / Math.max(profile.fantasyRosterLimit, 1) * 100)}%` }}/></div>
+      <div className="manager-profile-total"><small>Valor de la plantilla</small><strong>{profile.fantasyAssetValue.toLocaleString("es-ES")} <em>monedas</em></strong></div>
     </section>
     <section className="manager-profile-roster">
       <div className="manager-profile-section-heading"><div><span>PLANTILLA ACTUAL</span><h2>Jugadores Fantasy</h2></div><BadgeEuro size={20}/></div>
