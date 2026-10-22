@@ -1,11 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Bell, LogOut, Menu, Shield, X } from "lucide-react";
-import { limitToLast, onValue, orderByChild, query, ref } from "firebase/database";
 import { useAuth } from "./AuthContext";
 import { AuthDialog } from "../components/AuthDialog";
 import { apiRequest } from "../services/api/client";
-import { database } from "../services/firebase/client";
 import { UserAvatar } from "../components/UserAvatar";
 import { PageLoading } from "../components/PageLoading";
 
@@ -85,11 +83,19 @@ function NotificationBell() {
   const [error,setError]=useState("");
   const unread=items.filter((item)=>item.read===false).length;
   useEffect(()=>{
-    if(!user||!database)return;
-    return onValue(query(ref(database,`laligaBrains/notifications/${user.uid}`),orderByChild("createdAt"),limitToLast(50)),(snapshot)=>{
-      const rows=Object.entries((snapshot.val()??{}) as Record<string,Omit<(typeof items)[number],"id">>).map(([id,item])=>({...item,id})).filter((item)=>item.type==="match_result");
-      setItems(rows.sort((a,b)=>Number(b.createdAt??0)-Number(a.createdAt??0)));
-    },()=>setError("No se han podido actualizar las notificaciones."));
+    if(!user){setItems([]);setError("");return;}
+    let active=true;
+    const refresh=async()=>{
+      try{
+        const result=await apiRequest<{items:typeof items}>("notifications-action",undefined,{method:"GET"});
+        if(active){setItems(result.items.filter((item)=>item.type==="match_result"));setError("");}
+      }catch(problem){
+        if(active)setError(problem instanceof Error?problem.message:"No se han podido actualizar las notificaciones.");
+      }
+    };
+    void refresh();
+    const interval=window.setInterval(()=>void refresh(),30_000);
+    return()=>{active=false;window.clearInterval(interval);};
   },[user]);
   const load=async()=>{try{const result=await apiRequest<{items:typeof items}>("notifications-action",undefined,{method:"GET"});setItems(result.items.filter((item)=>item.type==="match_result"));setError("");}catch(problem){setError(problem instanceof Error?problem.message:"No se pudieron cargar las notificaciones.");}};
   const toggle=()=>{const next=!open;setOpen(next);if(next)void load();};

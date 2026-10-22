@@ -213,7 +213,9 @@ class DatabaseReference {
   }
   private withAuth(url: URL) {
     const requestUrl = new URL(url);
-    requestUrl.searchParams.set("auth", currentFirebaseRuntime().databaseToken);
+    const databaseToken = currentFirebaseRuntime().databaseToken;
+    if (databaseToken) requestUrl.searchParams.set("auth", databaseToken);
+    else requestUrl.searchParams.delete("auth");
     return requestUrl;
   }
 }

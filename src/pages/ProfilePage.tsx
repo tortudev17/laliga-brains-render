@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import { deleteObject, ref as storageRef, uploadBytes } from "firebase/storage";
-import { limitToLast, onValue, orderByChild, query, ref } from "firebase/database";
 import { Coins, ShieldCheck, Camera } from "lucide-react";
 import { useAuth } from "../app/AuthContext";
-import { database, getFirebaseStorage } from "../services/firebase/client";
+import { getFirebaseStorage } from "../services/firebase/client";
 import { apiRequest } from "../services/api/client";
 import type { WalletView, CoinTransaction } from "../types/domain";
 import { UserAvatar } from "../components/UserAvatar";
@@ -22,20 +21,28 @@ export function ProfilePage() {
 
   useEffect(() => { setDisplayName(profile?.displayName ?? ""); setNickname(profile?.nickname ?? ""); setPhotoPath(profile?.photoPath ?? ""); }, [profile?.displayName, profile?.nickname, profile?.photoPath]);
   useEffect(() => {
-    if (!user || !database) return;
-    const walletUnsubscribe = onValue(ref(database, `laligaBrains/economy/wallets/${user.uid}`), (snapshot) => setWallet(snapshot.val()));
-    const fantasyUnsubscribe = onValue(ref(database, "laligaBrains/fantasy/players"), (snapshot) => {
-      const rows = Object.entries((snapshot.val() ?? {}) as Record<string, { ownerUid?: string; name?: string; value?: number; archived?: boolean }>)
-        .filter(([, player]) => player.ownerUid === user.uid && player.archived !== true)
-        .map(([id, player]) => ({ id, name: String(player.name ?? "Jugador"), value: Number(player.value ?? 50) }))
-        .filter((player) => Number.isSafeInteger(player.value) && player.value > 0);
-      setFantasyPlayers(rows);
-    });
-    const ledgerUnsubscribe = onValue(query(ref(database, `laligaBrains/economy/ledger/${user.uid}`), orderByChild("createdAt"), limitToLast(50)), (snapshot) => {
-      const rows = Object.values((snapshot.val() ?? {}) as Record<string, CoinTransaction>).sort((a,b)=>b.createdAt-a.createdAt);
-      setTransactions(rows);
-    });
-    return () => { walletUnsubscribe(); fantasyUnsubscribe(); ledgerUnsubscribe(); };
+    if (!user) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const [walletData, fantasyData] = await Promise.all([
+          apiRequest<{ wallet: WalletView; transactions: CoinTransaction[] }>("wallet-action", undefined, { method: "GET" }),
+          apiRequest<{ players: Array<{ id: string; name: string; value: number; ownerUid?: string; archived?: boolean }> }>("fantasy-action", undefined, { method: "GET" }),
+        ]);
+        if (!active) return;
+        setWallet(walletData.wallet);
+        setTransactions(walletData.transactions);
+        setFantasyPlayers(fantasyData.players
+          .filter((player) => player.ownerUid === user.uid && player.archived !== true)
+          .map((player) => ({ id: player.id, name: player.name, value: Number(player.value ?? 50) }))
+          .filter((player) => Number.isSafeInteger(player.value) && player.value > 0));
+      } catch (error) {
+        if (active) console.error("No se pudieron actualizar los datos del perfil.", error);
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(() => void refresh(), 30_000);
+    return () => { active = false; window.clearInterval(interval); };
   }, [user]);
   const walletBalance = Number(wallet?.balance ?? 0);
   const fantasyAssetValue = fantasyPlayers.reduce((total, player) => total + player.value, 0);

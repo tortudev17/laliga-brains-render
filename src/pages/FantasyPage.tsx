@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowDownLeft, ArrowUpRight, BadgeEuro, CircleHelp, Coins, Crown, RefreshCw, Search, ShieldCheck, ShoppingBag, Sparkles, UserPlus, X } from "lucide-react";
 import { useAuth } from "../app/AuthContext";
-import { database } from "../services/firebase/client";
 import { apiRequest } from "../services/api/client";
-import { ref, onValue } from "firebase/database";
 import "../styles/fantasy.css";
 
 type FantasyPlayer = { id: string; name: string; value: number; permanentInvestment?: number; ownerUid?: string; ownerName?: string; ownerUsername?: string; ownerFantasyCount?: number; ghost?: boolean };
@@ -35,35 +33,27 @@ export function FantasyPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const result = await apiRequest<{ players: FantasyPlayer[]; roster: FantasyPlayer[]; offers: FantasyOffer[]; rosterLimit?: number; extraSlots?: number }>("fantasy-action", undefined, { method: "GET" });
+      const [result, wallet] = await Promise.all([
+        apiRequest<{ players: FantasyPlayer[]; roster: FantasyPlayer[]; offers: FantasyOffer[]; rosterLimit?: number; extraSlots?: number }>("fantasy-action", undefined, { method: "GET" }),
+        apiRequest<{ wallet: { balance?: number } }>("wallet-action", undefined, { method: "GET" }),
+      ]);
       setPlayers(result.players);
       setRoster(result.roster);
       setOffers(result.offers);
       setRosterLimit(Number.isSafeInteger(result.rosterLimit) && Number(result.rosterLimit) >= 5 ? Number(result.rosterLimit) : 5);
       setExtraSlots(Number.isSafeInteger(result.extraSlots) && Number(result.extraSlots) >= 0 ? Number(result.extraSlots) : 0);
+      setWalletBalance(Number.isSafeInteger(wallet.wallet?.balance) ? Number(wallet.wallet.balance) : 0);
+      setWalletError("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No se pudo cargar el mercado.");
+      setWalletBalance(null);
+      setWalletError(error instanceof Error ? error.message : "No se pudo consultar el saldo de monedas.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { void load(); }, []);
-  useEffect(() => {
-    if (!user || !database) {
-      setWalletBalance(null);
-      setWalletError("No se ha podido conectar con el monedero.");
-      return;
-    }
-    return onValue(ref(database, `laligaBrains/economy/wallets/${user.uid}`), (snapshot) => {
-      const value = snapshot.val() as { balance?: unknown } | null;
-      setWalletBalance(typeof value?.balance === "number" && Number.isSafeInteger(value.balance) ? value.balance : 0);
-      setWalletError("");
-    }, () => {
-      setWalletBalance(null);
-      setWalletError("No se ha podido consultar el saldo de monedas.");
-    });
-  }, [user]);
 
   const filteredPlayers = useMemo(() => {
     const normalized = search.trim().toLocaleLowerCase("es-ES");

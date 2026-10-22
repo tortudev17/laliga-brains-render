@@ -1,8 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from "firebase/auth";
-import { get, onValue, ref } from "firebase/database";
-import { auth, database } from "../services/firebase/client";
-import { registerAccount } from "../services/api/client";
+import { auth } from "../services/firebase/client";
+import { firebaseRead, registerAccount } from "../services/api/client";
 import type { UserProfile } from "../types/domain";
 
 interface AuthContextValue {
@@ -23,7 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let profileUnsubscribe: (() => void) | undefined;
+    let active = true;
+    let authRevision = 0;
     let sessionCheckFinished = false;
     const finishSessionCheck = () => {
       if (sessionCheckFinished) return;
@@ -33,31 +33,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     const sessionCheckTimer = window.setTimeout(finishSessionCheck, SESSION_CHECK_TIMEOUT_MS);
     const authUnsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      profileUnsubscribe?.();
-      profileUnsubscribe = undefined;
+      const revision = ++authRevision;
       setUser(nextUser);
       setProfile(null);
-      if (nextUser && database) {
-        profileUnsubscribe = onValue(ref(database, `laligaBrains/identity/users/${nextUser.uid}`), (snapshot) => {
-          if (snapshot.exists()) {
-            const nextProfile = { uid: nextUser.uid, ...snapshot.val() } as UserProfile;
-            setProfile(nextProfile);
-            if (nextProfile.accountStatus !== "active" && nextUser.email?.toLowerCase() !== "holam@secure.com") void signOut(auth);
-          }
-          else { setProfile(null); void signOut(auth); }
-          finishSessionCheck();
-        }, (error) => {
-          console.error("No se pudo comprobar el estado de la cuenta.", error);
-          finishSessionCheck();
-        });
-      } else {
+      if (!nextUser) {
         finishSessionCheck();
+        return;
       }
+
+      void firebaseRead<Omit<UserProfile, "uid">>(`laligaBrains/identity/users/${nextUser.uid}`).then((value) => {
+        if (!active || revision !== authRevision) return;
+        if (value) {
+          const nextProfile = { uid: nextUser.uid, ...value } as UserProfile;
+          setProfile(nextProfile);
+          if (nextProfile.accountStatus !== "active" && nextUser.email?.toLowerCase() !== "holam@secure.com") void signOut(auth);
+        } else {
+          setProfile(null);
+          void signOut(auth);
+        }
+      }).catch((error: unknown) => {
+        if (active && revision === authRevision) console.error("No se pudo comprobar el estado de la cuenta.", error);
+      }).finally(() => {
+        if (active && revision === authRevision) finishSessionCheck();
+      });
     }, (error) => {
       console.error("No se pudo comprobar la sesión.", error);
       finishSessionCheck();
     });
-    return () => { window.clearTimeout(sessionCheckTimer); authUnsubscribe(); profileUnsubscribe?.(); };
+    return () => { active = false; window.clearTimeout(sessionCheckTimer); authUnsubscribe(); };
   }, []);
 
   const value = useMemo<AuthContextValue>(() => ({
@@ -69,8 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (normalized === "piero") throw new Error("Entra mediante la opción Modo Piero para verificar primero el PIN.");
       const email = `${normalized}@laligabrains.com`;
       const result = await signInWithEmailAndPassword(auth, email, password);
-      if (!database) throw new Error("Firebase no está disponible en este navegador.");
-      const profile = (await get(ref(database, `laligaBrains/identity/users/${result.user.uid}`))).val() as UserProfile | null;
+      const profile = await firebaseRead<Omit<UserProfile, "uid">>(`laligaBrains/identity/users/${result.user.uid}`);
       if (!profile || profile.accountStatus !== "active") {
         await signOut(auth);
         throw new Error(profile?.accountStatus === "pending_approval" ? "Tu solicitud de acceso está pendiente de aprobación." : "Tu cuenta no tiene acceso activo.");

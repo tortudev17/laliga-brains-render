@@ -2,10 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Heart, Trophy, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
-import { onValue, ref } from "firebase/database";
-import { apiRequest } from "../services/api/client";
+import { apiRequest, firebaseRead } from "../services/api/client";
 import { useAuth } from "../app/AuthContext";
-import { database, getFirebaseStorage } from "../services/firebase/client";
+import { getFirebaseStorage } from "../services/firebase/client";
 import { FantasyPage } from "./FantasyPage";
 
 export function SectionPage({ title }: { title: string }) {
@@ -28,8 +27,11 @@ function PenaltyPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
-    if (!database) return;
-    return onValue(ref(database, "laligaBrains/config/siteSettings/penaltyGameEnabled"), (snapshot) => setEnabled(snapshot.val() === true), () => setEnabled(false));
+    let active = true;
+    void firebaseRead<boolean>("laligaBrains/config/siteSettings/penaltyGameEnabled")
+      .then((value) => { if (active) setEnabled(value === true); })
+      .catch(() => { if (active) setEnabled(false); });
+    return () => { active = false; };
   }, []);
   const start = async () => { setBusy(true); try { const result = await apiRequest<{sessionId:string}>("penalty-action",{action:"start",difficulty}); setSessionId(result.sessionId);setShots(0);setGoals(0);setMessage("La tanda ha comenzado. Elige tu lanzamiento."); } catch(error) { setMessage(error instanceof Error?error.message:"No se pudo iniciar la tanda."); } finally { setBusy(false); } };
   const shoot = async () => { setBusy(true); try { const result=await apiRequest<{goal:boolean;shot:number;completed:boolean;reward?:number|null;goals:number}>("penalty-action",{action:"shot",sessionId,direction,power});setShots(result.shot);setGoals(result.goals);setMessage(result.completed?(result.reward?`¡Has ganado! Se han abonado ${result.reward} monedas.`:"Tanda terminada. Prueba otra vez."):result.goal?"¡Gol! Sigue con el próximo lanzamiento.":"El portero ha parado el disparo.");if(result.completed)setSessionId(""); } catch(error) { setMessage(error instanceof Error?error.message:"No se pudo registrar el lanzamiento."); } finally { setBusy(false); } };

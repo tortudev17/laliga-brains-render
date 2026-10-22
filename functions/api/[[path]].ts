@@ -19,6 +19,7 @@ import { handler as schoolScheduler } from "../handlers/school-scheduler";
 import { handler as socialAction } from "../handlers/social-action";
 import { handler as socialFeed } from "../handlers/social-feed";
 import { handler as walletAction } from "../handlers/wallet-action";
+import { handler as firebaseProxy } from "../handlers/firebase-proxy";
 import { handler as pieroData } from "../handlers/piero-data";
 import { handler as pieroAdmin } from "../handlers/piero-admin";
 import { randomUUID } from "node:crypto";
@@ -43,6 +44,7 @@ const routes: Record<string, Handler> = {
   "social-action": socialAction,
   "social-feed": socialFeed,
   "wallet-action": walletAction,
+  "firebase-proxy": firebaseProxy,
   "piero-data": pieroData,
   "piero-admin": pieroAdmin,
 };
@@ -59,7 +61,14 @@ export const onRequest = async ({ request, env, params }: RuntimeRequestContext)
 
     const route = routes[path];
     if (!route || request.method === "HEAD") return jsonResponse(404, { error: "No se encontró el recurso." });
-    const databaseToken = await getPieroDatabaseToken(env);
+    // Normal application requests must reach Firebase with the caller's own
+    // Firebase ID token so Realtime Database rules authorize each operation.
+    // Only the separate Piero admin panel and scheduled maintenance use the
+    // service session stored in Render Key Value.
+    const usesPieroServiceSession = path === "piero-data" || path === "piero-admin" || path === "school-scheduler";
+    const databaseToken = usesPieroServiceSession
+      ? await getPieroDatabaseToken(env)
+      : request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
     const url = new URL(request.url);
     const event = await toHandlerEvent(request, url);
     const response = await withFirebaseRuntime({ env, databaseToken }, () => Promise.resolve(route(event)));

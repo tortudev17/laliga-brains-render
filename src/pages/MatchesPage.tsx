@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { endBefore, get, limitToLast, onValue, orderByChild, query, ref } from "firebase/database";
 import { CalendarDays } from "lucide-react";
-import { database, firebaseConfigured } from "../services/firebase/client";
+import { firebaseRead } from "../services/api/client";
+import { firebaseConfigured } from "../services/firebase/client";
 import type { MatchRecord } from "../types/domain";
 
 const pageSize = 30;
@@ -15,28 +15,32 @@ export function MatchesPage() {
   const [olderError, setOlderError] = useState("");
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    if (!firebaseConfigured || !database) return;
+    if (!firebaseConfigured) { setLoading(false); return; }
     setLoading(true);
     setError("");
-    return onValue(query(ref(database, "laligaBrains/football/matches"), orderByChild("playedAt"), limitToLast(pageSize)), (snapshot) => {
-      const value = snapshot.val() as Record<string, Omit<MatchRecord, "id">> | null;
-      const rows = value ? Object.entries(value).map(([id, item]) => ({ ...item, id })).sort((a, b) => b.playedAt - a.playedAt || b.id.localeCompare(a.id)) : [];
-      setMatches(rows);
-      setHasMore(rows.length === pageSize);
-      setLoading(false);
-    }, () => { setError("No se han podido cargar los partidos. Comprueba la conexión y vuelve a intentarlo."); setLoading(false); });
+    let active = true;
+    void firebaseRead<Record<string, Omit<MatchRecord, "id">>>("laligaBrains/football/matches").then((value) => {
+      if (!active) return;
+      const rows = Object.entries(value ?? {}).map(([id, item]) => ({ ...item, id }))
+        .sort((a, b) => b.playedAt - a.playedAt || b.id.localeCompare(a.id));
+      setMatches(rows.slice(0, pageSize));
+      setHasMore(rows.length > pageSize);
+    }).catch(() => {
+      if (active) setError("No se han podido cargar los partidos. Comprueba la conexión y vuelve a intentarlo.");
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [retry]);
 
   const loadOlder = async () => {
-    if (!database || !matches.length || loadingMore) return;
+    if (!matches.length || loadingMore) return;
     setLoadingMore(true);
     try {
       const oldest = matches.reduce((previous, match) => match.playedAt < previous.playedAt || (match.playedAt === previous.playedAt && match.id < previous.id) ? match : previous);
-      const snapshot = await get(query(ref(database, "laligaBrains/football/matches"), orderByChild("playedAt"), endBefore(oldest.playedAt, oldest.id), limitToLast(pageSize)));
-      const value = snapshot.val() as Record<string, Omit<MatchRecord, "id">> | null;
-      const older = Object.entries(value ?? {}).map(([id, item]) => ({ ...item, id }));
+      const value = await firebaseRead<Record<string, Omit<MatchRecord, "id">>>("laligaBrains/football/matches");
+      const older = Object.entries(value ?? {}).map(([id, item]) => ({ ...item, id }))
+        .filter((match) => match.playedAt < oldest.playedAt || (match.playedAt === oldest.playedAt && match.id < oldest.id));
       setMatches((current) => [...current, ...older].sort((a, b) => b.playedAt - a.playedAt || b.id.localeCompare(a.id)));
-      setHasMore(older.length === pageSize);
+      setHasMore(false);
       setOlderError("");
     } catch {
       setOlderError("No se han podido cargar los partidos anteriores.");

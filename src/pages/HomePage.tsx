@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { endBefore, get, limitToLast, onValue, orderByChild, query, ref } from "firebase/database";
 import { AlertCircle, CalendarDays, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import { database, firebaseConfigured } from "../services/firebase/client";
+import { firebaseRead } from "../services/api/client";
+import { firebaseConfigured } from "../services/firebase/client";
 import type { MatchRecord, TeamStats } from "../types/domain";
 
 const MATCH_PAGE_SIZE = 8;
@@ -25,22 +25,27 @@ export function HomePage() {
   const error = matchesError || statsError;
 
   useEffect(() => {
-    if (!firebaseConfigured || !database) { setMatchesLoading(false); setStatsLoading(false); return; }
+    if (!firebaseConfigured) { setMatchesLoading(false); setStatsLoading(false); return; }
     setMatchesLoading(true); setStatsLoading(true); setMatchesError(""); setStatsError("");
-    const unsubscribeMatches = onValue(query(ref(database, "laligaBrains/football/matches"), orderByChild("playedAt"), limitToLast(MATCH_PAGE_SIZE)), (snapshot) => {
-      const value = snapshot.val() as Record<string, Omit<MatchRecord, "id">> | null;
-      const rows = value ? Object.entries(value).map(([id, match]) => ({ ...match, id })) : [];
-      setLatestMatches(rows);
-      setHasOlderMatches(rows.length === MATCH_PAGE_SIZE);
-      setMatchesLoading(false);
+    let active = true;
+    void firebaseRead<Record<string, Omit<MatchRecord, "id">>>("laligaBrains/football/matches").then((value) => {
+      if (!active) return;
+      const rows = Object.entries(value ?? {}).map(([id, match]) => ({ ...match, id }))
+        .sort((a, b) => a.playedAt - b.playedAt || a.id.localeCompare(b.id));
+      setLatestMatches(rows.slice(-MATCH_PAGE_SIZE));
+      setHasOlderMatches(rows.length > MATCH_PAGE_SIZE);
       setMatchesError("");
-    }, () => { setMatchesError("No se han podido cargar los resultados recientes."); setMatchesLoading(false); });
-    const unsubscribeStats = onValue(ref(database, "laligaBrains/football/teamStats"), (snapshot) => {
-      setTeamStats((snapshot.val() ?? {}) as Record<string, TeamStats>);
-      setStatsLoading(false);
+    }).catch(() => {
+      if (active) setMatchesError("No se han podido cargar los resultados recientes.");
+    }).finally(() => { if (active) setMatchesLoading(false); });
+    void firebaseRead<Record<string, TeamStats>>("laligaBrains/football/teamStats").then((value) => {
+      if (!active) return;
+      setTeamStats(value ?? {});
       setStatsError("");
-    }, () => { setStatsError("No se han podido cargar las estadísticas de fútbol."); setStatsLoading(false); });
-    return () => { unsubscribeMatches(); unsubscribeStats(); };
+    }).catch(() => {
+      if (active) setStatsError("No se han podido cargar las estadísticas de fútbol.");
+    }).finally(() => { if (active) setStatsLoading(false); });
+    return () => { active = false; };
   }, [retry]);
 
   const stats3 = normalizeTeamStats(teamStats["3ESO"]);
@@ -53,13 +58,13 @@ export function HomePage() {
   const totalMatches = Math.max(stats3.played, stats4.played, matches.length);
 
   const loadOlderMatches = async () => {
-    if (!database || !hasOlderMatches || loadingOlder || !matches.length) return;
+    if (!hasOlderMatches || loadingOlder || !matches.length) return;
     const oldest = matches[0];
     setLoadingOlder(true);
     try {
-      const snapshot = await get(query(ref(database, "laligaBrains/football/matches"), orderByChild("playedAt"), endBefore(oldest.playedAt, oldest.id), limitToLast(MATCH_PAGE_SIZE)));
-      const value = snapshot.val() as Record<string, Omit<MatchRecord, "id">> | null;
-      const rows = value ? Object.entries(value).map(([id, match]) => ({ ...match, id })) : [];
+      const value = await firebaseRead<Record<string, Omit<MatchRecord, "id">>>("laligaBrains/football/matches");
+      const rows = Object.entries(value ?? {}).map(([id, match]) => ({ ...match, id }))
+        .filter((match) => match.playedAt < oldest.playedAt || (match.playedAt === oldest.playedAt && match.id < oldest.id));
       setOlderMatches((current) => {
         const byId = new Map([...rows, ...current].map((match) => [match.id, match]));
         return [...byId.values()].sort((a, b) => a.playedAt - b.playedAt || a.id.localeCompare(b.id));

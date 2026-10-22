@@ -21,6 +21,12 @@ export async function apiRequest<T>(path: string, body?: unknown, options: ApiOp
   return payload;
 }
 
+export async function firebaseRead<T>(path: string): Promise<T | null> {
+  const params = new URLSearchParams({ path });
+  const result = await apiRequest<{ value: T | null }>(`firebase-proxy?${params.toString()}`, undefined, { method: "GET" });
+  return result.value;
+}
+
 export function normalizeUsername(username: string) {
   return username.normalize("NFKC").trim().toLowerCase();
 }

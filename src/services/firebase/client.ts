@@ -1,6 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
 import { connectAuthEmulator, getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { connectDatabaseEmulator, getDatabase, type Database } from "firebase/database";
 import type { FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
@@ -23,7 +22,6 @@ const validDatabaseUrl = useEmulators
   ? /^http:\/\/127\.0\.0\.1:9000(?:\/|\?|$)/.test(firebaseConfig.databaseURL ?? "")
   : /^https:\/\/laliga-brains-default-rtdb\.europe-west1\.firebasedatabase\.app\/?$/.test(firebaseConfig.databaseURL ?? "");
 export const firebaseConfigured = Boolean(firebaseConfig.apiKey && validDatabaseUrl);
-export const database: Database | null = validDatabaseUrl ? getDatabase(app, firebaseConfig.databaseURL) : null;
 let storagePromise: Promise<FirebaseStorage> | undefined;
 export function getFirebaseStorage() {
   storagePromise ??= import("firebase/storage").then(({ getStorage, connectStorageEmulator }) => {
@@ -36,7 +34,6 @@ export function getFirebaseStorage() {
 
 if (useEmulators) {
   connectAuthEmulator(auth, import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? "http://127.0.0.1:9099", { disableWarnings: true });
-  if (database) connectDatabaseEmulator(database, "127.0.0.1", 9000);
 }
 
 void setPersistence(auth, browserLocalPersistence).catch((error: unknown) => {
