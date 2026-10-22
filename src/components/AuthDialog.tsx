@@ -33,7 +33,7 @@ export function AuthDialog({ mode, onClose, onChangeMode }: { mode: "login" | "r
       <button className="icon-button dialog-close" onClick={onClose} aria-label="Cerrar"><X size={20} /></button>
       <span className="dialog-mark"><ShieldCheck size={23} /></span>
       <h2 id="auth-title">{registrationComplete ? "Cuenta creada" : recoveryMode ? "Recuperar contraseña" : mode === "login" ? "Inicia sesión" : "Crea tu cuenta"}</h2>
-      <p>{registrationComplete ? pendingApproval ? "Tu solicitud de jugador está pendiente de aprobación. Podrás entrar cuando Piero la apruebe." : "Tu cuenta ya está lista." : recoveryMode ? "Las cuentas usan un correo interno sin buzón. Para recuperar el acceso, contacta con Piero para que cambie la contraseña desde Firebase Authentication." : mode === "login" ? "Entra con tu nombre de usuario y contraseña." : "Elige un usuario y una contraseña para empezar."}</p>
+      <p>{registrationComplete ? pendingApproval ? "Tu solicitud de jugador está pendiente de aprobación. Cuando Piero la apruebe, recibirás tus 120 monedas iniciales." : "Tu cuenta ya está lista y tienes 120 monedas iniciales." : recoveryMode ? "Las cuentas usan un correo interno sin buzón. Para recuperar el acceso, contacta con Piero para que cambie la contraseña desde Firebase Authentication." : mode === "login" ? "Entra con tu nombre de usuario y contraseña." : "Elige un usuario y una contraseña para empezar."}</p>
       {registrationComplete ? <div className="recovery-panel">
         <strong>Nombre de usuario</strong><code>{username.trim().toLowerCase()}</code>
         <span>Guarda tu usuario. No se genera un código de recuperación porque Firebase Authentication no puede cambiar una contraseña ajena desde el navegador.</span>

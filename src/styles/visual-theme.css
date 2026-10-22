@@ -1,0 +1,69 @@
+:root{--gold:#d6ad47;--gold-dark:#b68e2e}
+.brand-mark svg{stroke:#e0b64d}
+.brand-name strong{color:#e0b64d}
+.main-nav a.active{border-color:#dfb348}
+.admin-link{border:1px solid rgba(224,182,77,.68);background:rgba(255,255,255,.025);color:#f0c85b}
+.admin-link:hover{background:rgba(224,182,77,.1)}
+.button-primary{border-color:#d6ad47;background:#d6ad47;color:#152b48}
+.button-primary:hover:not(:disabled){border-color:#c69a34;background:#c69a34;color:#10264a}
+.button-primary:focus-visible{outline-color:#98751e}
+:root{--gold:#d6ad47;--gold-dark:#b68e2e;--soft:#f5f7fa;--line:#e4e9ef}
+body{background:#f6f8fb}
+.topbar{background:#112a4b;border-bottom:1px solid rgba(214,173,71,.34)}
+.main-nav a.active{color:#f1c757;border-color:#e0b64d}
+.main-nav a:hover{color:#fff}
+.page-container{width:min(1280px,calc(100% - 64px))}
+.page-heading h1,.section-heading h2{color:#112a4b}
+.profile-card,.wallet-card,.security-card,.performance-chart,.player-profile-card{border-color:#e4e9ef;border-radius:11px;box-shadow:0 5px 18px rgba(20,38,68,.045)}
+.post-composer,.post-row,.leaderboard-module{border:1px solid #e4e9ef;border-radius:11px;background:#fff;box-shadow:0 5px 18px rgba(20,38,68,.04)}
+.post-composer{padding:17px;margin-bottom:14px}
+.post-composer textarea{min-height:94px;padding:4px 2px;color:#263b56;line-height:1.5}
+.post-composer>div:last-child{gap:12px;padding-top:13px}
+.post-row{margin:0 0 13px;padding:17px}
+.post-author-profile{color:#183b61;font-size:13px;font-weight:800;text-decoration:none}
+.post-author-profile:hover{color:#977329;text-decoration:underline;text-underline-offset:3px}
+.post-actions button{min-height:36px;padding:0 10px;border-radius:7px}
+.post-actions button:hover,.promote-controls button:hover{background:#faf5e7;color:#765a1e}
+.feed-aside{align-self:start;padding:18px;border:1px solid #e4e9ef;border-radius:11px;background:#fff;box-shadow:0 5px 18px rgba(20,38,68,.04)}
+.feed-aside h3{color:#112a4b}
+.leaderboard-module{overflow:hidden}
+.leaderboard-title{padding:16px 18px;background:#fff}
+.leaderboard-item[href]{transition:background .15s}
+.leaderboard-item[href]:hover{background:#fbf7eb}
+.leaderboard-item[href]>b{background:#f7f0dc;color:#806323}
+.promoted-label{display:inline-flex;margin:7px 0;padding:5px 8px;border-radius:99px;background:#fbf7eb;color:#8f702b;font-size:9px;font-weight:800}
+.mobile-admin-nav{display:none}
+.compact-label{display:none}
+@media(max-width:820px){
+  .topbar{position:sticky;top:0;z-index:30;min-height:66px;height:auto;flex-wrap:nowrap;gap:0;padding:0 18px}
+  .brand{height:66px}
+  .header-actions{margin-left:auto;gap:6px}
+  .main-nav,.main-nav.is-open{position:fixed;top:65px;right:12px;z-index:35;width:min(290px,calc(100vw - 24px));height:auto;max-height:min(75vh,620px);overflow:auto;flex:none;flex-direction:column;align-items:stretch;gap:3px;padding:8px;border:1px solid rgba(255,255,255,.12);border-top:2px solid #d6ad47;border-radius:0 0 12px 12px;background:#112a4b;box-shadow:0 16px 32px rgba(9,24,43,.24);display:none}
+  .main-nav.is-open{display:flex}
+  .main-nav a{min-height:44px;justify-content:flex-start;padding:0 13px;border:0;border-radius:7px;color:#e3e9f2;font-size:13px}
+  .main-nav a.active{background:rgba(214,173,71,.14);color:#f3cd63}
+  .mobile-menu{display:inline-flex}
+  .mobile-admin-nav{display:flex!important;align-items:center;gap:9px;margin-top:4px;padding:0 13px;border-top:1px solid rgba(255,255,255,.13)!important;color:#f0c85b!important}
+}
+@media(max-width:620px){
+  .topbar{padding:0 12px}
+  .brand{height:62px;gap:6px}
+  .brand-mark{width:31px}
+  .brand-mark svg{width:28px;height:28px}
+  .brand-name{font-size:15px}
+  .main-nav,.main-nav.is-open{top:61px;right:22px;width:min(290px,calc(100vw - 16px))}
+  .header-actions{gap:4px}
+  .text-button{padding:8px 4px;font-size:11px}
+  .header-actions>.button-small{min-height:35px;padding:0 9px;font-size:10px}
+  .admin-link{display:none}
+  .user-chip{height:36px;padding:0 5px}
+  .mobile-menu{height:38px;min-width:38px}
+  .page-container{width:calc(100% - 28px);padding-top:25px}
+  .post-composer,.post-row{padding:13px;border-radius:9px}
+  .post-row{margin-bottom:10px}
+  .post-actions{gap:5px;flex-wrap:wrap}
+  .post-actions button{min-height:35px;padding:0 8px;font-size:10px}
+  .feed-layout{gap:14px}
+  .feed-aside{padding:14px;border-radius:9px}
+}
+@media(max-width:360px){.brand-name{font-size:14px}.brand-mark{width:27px}.text-button{font-size:10px;padding:8px 3px}.text-button .full-label{display:none}.text-button .compact-label{display:inline}.header-actions>.button-small{padding:0 7px}.header-actions{gap:2px}}

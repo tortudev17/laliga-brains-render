@@ -46,8 +46,21 @@ export interface PlayerProfile {
   name: string;
   uid?: string;
   ghost: boolean;
+  unknown?: boolean;
   totalGoals: number;
   createdAt: number;
+}
+
+export interface ManualGoalAdjustment {
+  id: string;
+  playerId: string;
+  playerName: string;
+  amount: number;
+  reason: string;
+  actorUid: string;
+  createdAt: number;
+  idempotencyKey: string;
+  status: "pending" | "complete";
 }
 
 export interface WalletView {

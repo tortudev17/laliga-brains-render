@@ -1,22 +1,24 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { Bell, CircleUserRound, LogOut, Menu, Shield, X } from "lucide-react";
+import { Bell, LogOut, Menu, Shield, X } from "lucide-react";
 import { limitToLast, onValue, orderByChild, query, ref } from "firebase/database";
 import { useAuth } from "./AuthContext";
 import { AuthDialog } from "../components/AuthDialog";
 import { apiRequest } from "../services/api/client";
 import { database } from "../services/firebase/client";
+import { UserAvatar } from "../components/UserAvatar";
 
 const HomePage = lazy(() => import("../pages/HomePage").then((module) => ({ default: module.HomePage })));
 const MatchesPage = lazy(() => import("../pages/MatchesPage").then((module) => ({ default: module.MatchesPage })));
 const SectionPage = lazy(() => import("../pages/SectionPage").then((module) => ({ default: module.SectionPage })));
 const ProfilePage = lazy(() => import("../pages/ProfilePage").then((module) => ({ default: module.ProfilePage })));
+const ManagerProfilePage = lazy(() => import("../pages/ManagerProfilePage").then((module) => ({ default: module.ManagerProfilePage })));
 const PieroPage = lazy(() => import("../pages/PieroPage").then((module) => ({ default: module.PieroPage })));
 const PlayerProfilePage = lazy(() => import("../pages/PlayerProfilePage").then((module) => ({ default: module.PlayerProfilePage })));
 
 const navigation = [
-  ["/", "Inicio"], ["/partidos", "Partidos"], ["/goleadores", "Goleadores"], ["/social", "Social"],
-  ["/fantasy", "Fantasy"], ["/pronosticos", "Predicciones"], ["/penaltis", "Penaltis"],
+  ["/", "Inicio"], ["/partidos", "Partidos"], ["/goleadores", "Goleadores"],
+  ["/fantasy", "Fantasy"],
   ["/clasificaciones", "Clasificaciones"], ["/perfil", "Perfil"],
 ] as const;
 
@@ -36,14 +38,15 @@ export function App() {
       <nav className={`main-nav ${mobileOpen ? "is-open" : ""}`} aria-label="Navegación principal">
         {navigation.filter(([path]) => signedIn || path === "/" || path === "/partidos").map(([path, title]) =>
           <Link key={path} className={location.pathname === path ? "active" : ""} to={path} onClick={() => setMobileOpen(false)}>{title}</Link>)}
+        <Link className="mobile-admin-nav" to="/piero" onClick={() => setMobileOpen(false)}><Shield size={15}/>Modo Piero</Link>
       </nav>
       <div className="header-actions">
         {loading ? <span className="session-loading" aria-live="polite">Comprobando sesión…</span> : signedIn ? <>
           <NotificationBell />
-          <button className="user-chip" onClick={() => { void logout(); }} title="Cerrar sesión"><CircleUserRound size={20} /><span>{profile?.displayName || profile?.username}</span><LogOut size={16} /></button>
+          <button className="user-chip" onClick={() => { void logout(); }} title="Cerrar sesión"><UserAvatar photoPath={profile?.photoPath} name={profile?.displayName || profile?.username || "usuario"} size={25} className="header-avatar"/><span>{profile?.displayName || profile?.username}</span><LogOut size={16} /></button>
           <Link to="/piero" className="admin-link"><Shield size={16} /> Modo Piero</Link>
         </> : <>
-          <button className="text-button" onClick={() => setAuthMode("login")}>Iniciar sesión</button>
+          <button className="text-button" onClick={() => setAuthMode("login")}><span className="full-label">Iniciar sesión</span><span className="compact-label">Entrar</span></button>
           <button className="button button-primary button-small" onClick={() => setAuthMode("register")}>Crear cuenta</button>
           <Link to="/piero" className="admin-link"><Shield size={16} /> Modo Piero</Link>
         </>}
@@ -56,6 +59,7 @@ export function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/partidos" element={<MatchesPage />} />
         <Route path="/perfil" element={<GatedRoute loading={loading} signedIn={signedIn}><ProfilePage /></GatedRoute>} />
+        <Route path="/perfil/:uid" element={<GatedRoute loading={loading} signedIn={signedIn}><ManagerProfilePage /></GatedRoute>} />
         <Route path="/piero" element={<PieroPage />} />
         <Route path="/jugador/:playerId" element={<GatedRoute loading={loading} signedIn={signedIn}><PlayerProfilePage /></GatedRoute>} />
         {navigation.filter(([path]) => !["/", "/partidos", "/perfil"].includes(path)).map(([path, title]) => <Route key={path} path={path} element={<GatedRoute loading={loading} signedIn={signedIn}><SectionPage title={title} /></GatedRoute>} />)}
@@ -82,14 +86,14 @@ function NotificationBell() {
   useEffect(()=>{
     if(!user||!database)return;
     return onValue(query(ref(database,`laligaBrains/notifications/${user.uid}`),orderByChild("createdAt"),limitToLast(50)),(snapshot)=>{
-      const rows=Object.entries((snapshot.val()??{}) as Record<string,Omit<(typeof items)[number],"id">>).map(([id,item])=>({...item,id}));
+      const rows=Object.entries((snapshot.val()??{}) as Record<string,Omit<(typeof items)[number],"id">>).map(([id,item])=>({...item,id})).filter((item)=>item.type==="match_result");
       setItems(rows.sort((a,b)=>Number(b.createdAt??0)-Number(a.createdAt??0)));
     },()=>setError("No se han podido actualizar las notificaciones."));
   },[user]);
-  const load=async()=>{try{const result=await apiRequest<{items:typeof items}>("notifications-action",undefined,{method:"GET"});setItems(result.items);setError("");}catch(problem){setError(problem instanceof Error?problem.message:"No se pudieron cargar las notificaciones.");}};
+  const load=async()=>{try{const result=await apiRequest<{items:typeof items}>("notifications-action",undefined,{method:"GET"});setItems(result.items.filter((item)=>item.type==="match_result"));setError("");}catch(problem){setError(problem instanceof Error?problem.message:"No se pudieron cargar las notificaciones.");}};
   const toggle=()=>{const next=!open;setOpen(next);if(next)void load();};
   const markRead=async(id:string)=>{try{await apiRequest("notifications-action",{notificationId:id});setItems((current)=>current.map((item)=>item.id===id?{...item,read:true}:item));}catch(problem){setError(problem instanceof Error?problem.message:"No se pudo marcar como leído.");}};
-  return <div className="notification-wrap"><button className="icon-button notification-button" aria-label={`Notificaciones${unread?`, ${unread} sin leer`:""}`} title="Notificaciones" onClick={toggle}><Bell size={19}/>{unread>0&&<span className="notification-count">{unread>9?"9+":unread}</span>}</button>{open&&<div className="notification-panel"><div className="notification-panel-title"><strong>Notificaciones</strong><button onClick={()=>void load()}>Actualizar</button></div>{error&&<p className="notification-error">{error}</p>}{items.length?items.slice(0,30).map((item)=><button key={item.id} className={`notification-item ${item.read?"read":"unread"}`} onClick={()=>{void markRead(item.id);if(item.type==="match_result")window.location.assign("/partidos");else if(item.postId)window.location.assign("/social");}}><strong>{item.title||notificationLabel(item.type)}</strong><span>{item.message||notificationLabel(item.type)}</span><small>{item.createdAt?new Intl.DateTimeFormat("es-ES",{dateStyle:"short",timeStyle:"short"}).format(item.createdAt):""}</small></button>):!error&&<p className="notifications-empty">No tienes notificaciones.</p>}</div>}</div>;
+  return <div className="notification-wrap"><button className="icon-button notification-button" aria-label={`Notificaciones${unread?`, ${unread} sin leer`:""}`} title="Notificaciones" onClick={toggle}><Bell size={19}/>{unread>0&&<span className="notification-count">{unread>9?"9+":unread}</span>}</button>{open&&<div className="notification-panel"><div className="notification-panel-title"><strong>Notificaciones</strong><button onClick={()=>void load()}>Actualizar</button></div>{error&&<p className="notification-error">{error}</p>}{items.length?items.slice(0,30).map((item)=><button key={item.id} className={`notification-item ${item.read?"read":"unread"}`} onClick={()=>{void markRead(item.id);if(item.type==="match_result")window.location.assign("/partidos");}}><strong>{item.title||notificationLabel(item.type)}</strong><span>{item.message||notificationLabel(item.type)}</span><small>{item.createdAt?new Intl.DateTimeFormat("es-ES",{dateStyle:"short",timeStyle:"short"}).format(item.createdAt):""}</small></button>):!error&&<p className="notifications-empty">No tienes notificaciones.</p>}</div>}</div>;
 }
 
 function notificationLabel(type?:string){return type==="like"?"Te han dado me gusta":type==="match_result"?"Nuevo resultado":"Notificación de LaLiga Brains";}

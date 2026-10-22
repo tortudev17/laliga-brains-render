@@ -34,6 +34,38 @@ export function goalsByPlayer(matches: MatchRecord[]): Record<string, number> {
   }, {});
 }
 
+export interface ManualGoalDelta { playerId: string; amount: number }
+export interface PlayerGoalStats {
+  totalGoals: number;
+  goalsByMatch: Record<string, number>;
+  recentGoals: number;
+  manualGoals: number;
+}
+
+/** Combines match-attributed goals with audited Piero adjustments. Manual changes never create match contributions. */
+export function calculatePlayerGoalStats(matches: MatchRecord[], adjustments: ManualGoalDelta[] = []): Record<string, PlayerGoalStats> {
+  const result: Record<string, PlayerGoalStats> = {};
+  const ordered = [...matches].sort((a, b) => a.playedAt - b.playedAt || a.id.localeCompare(b.id));
+  for (const match of ordered) for (const [playerId, rawGoals] of Object.entries(match.goalscorers4ESO ?? {})) {
+    const goals = Number(rawGoals);
+    if (!Number.isSafeInteger(goals) || goals <= 0) continue;
+    result[playerId] ??= { totalGoals: 0, goalsByMatch: {}, recentGoals: 0, manualGoals: 0 };
+    result[playerId]!.totalGoals += goals;
+    result[playerId]!.goalsByMatch[match.id] = (result[playerId]!.goalsByMatch[match.id] ?? 0) + goals;
+  }
+  for (const adjustment of adjustments) {
+    if (!adjustment.playerId || !Number.isSafeInteger(adjustment.amount) || adjustment.amount === 0) continue;
+    result[adjustment.playerId] ??= { totalGoals: 0, goalsByMatch: {}, recentGoals: 0, manualGoals: 0 };
+    result[adjustment.playerId]!.totalGoals += adjustment.amount;
+    result[adjustment.playerId]!.manualGoals += adjustment.amount;
+  }
+  for (const info of Object.values(result)) {
+    info.recentGoals = Object.values(info.goalsByMatch).slice(-5).reduce((sum, goals) => sum + goals, 0);
+    if (info.totalGoals < 0) throw new Error("Los goles totales de un jugador no pueden ser negativos.");
+  }
+  return result;
+}
+
 export function validateGoalAttribution(score4ESO: number, goals: number[]): boolean {
   return Number.isInteger(score4ESO) && score4ESO >= 0 && goals.length === score4ESO && goals.every((n) => Number.isInteger(n) && n > 0);
 }

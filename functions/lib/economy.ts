@@ -3,6 +3,8 @@ import { applyWalletDelta, emptyEconomy, type EconomyState } from "./economy-cor
 export { applyWalletDelta, emptyEconomy } from "./economy-core";
 export type { EconomyState } from "./economy-core";
 
+export const REGISTRATION_BONUS = 120;
+
 export async function mutateEconomy<T>(operation: (state: EconomyState) => T): Promise<T> {
   const ref = firebaseDb.ref("laligaBrains/economy/state");
   let output: T | undefined;

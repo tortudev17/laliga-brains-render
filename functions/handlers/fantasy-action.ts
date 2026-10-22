@@ -25,8 +25,54 @@ export const handler: Handler = async (event) => run(async () => {
     const vals = state.val() as EconomyState | null;
     const market = players.val() as Record<string, Record<string, unknown>> | null;
     const roster = vals?.fantasyPlayers ? playerView(vals).filter((player) => player.ownerUid === uid) : [];
-    const offers = Object.values(vals?.offers ?? {}).filter((offer) => offer.buyerUid === uid || offer.sellerUid === uid);
-    return json(200, { players: market ? Object.entries(market).map(([id, p]) => ({ id, name: String(p.name ?? "Jugador"), value: Number(p.value ?? 50), ownerUid: p.ownerUid as string | undefined, ghost: Boolean(p.ghost) })) : [], roster, offers });
+    const offers = Object.values(vals?.offers ?? {})
+      .filter((offer) => offer.buyerUid === uid || offer.sellerUid === uid)
+      .sort((a, b) => Number(b.updatedAt ?? b.createdAt) - Number(a.updatedAt ?? a.createdAt))
+      .slice(0, 50);
+    const marketPlayers = market
+      ? Object.entries(market).filter(([, player]) => player.archived !== true).map(([id, player]) => ({
+        id,
+        name: String(player.name ?? "Jugador"),
+        value: Number(player.value ?? 50),
+        ownerUid: player.ownerUid as string | undefined,
+        ghost: Boolean(player.ghost),
+      }))
+      : [];
+    const relatedUids = new Set<string>();
+    for (const player of marketPlayers) if (player.ownerUid) relatedUids.add(player.ownerUid);
+    for (const offer of offers) {
+      if (typeof offer.buyerUid === "string") relatedUids.add(offer.buyerUid);
+      if (typeof offer.sellerUid === "string") relatedUids.add(offer.sellerUid);
+    }
+    const profileEntries = await Promise.all([...relatedUids].map(async (profileUid) => {
+      const value = (await firebaseDb.ref(`laligaBrains/identity/users/${profileUid}`).get()).val() as { displayName?: string; username?: string } | null;
+      return [profileUid, value] as const;
+    }));
+    const profiles = new Map(profileEntries);
+    const userLabel = (profileUid: string | undefined) => {
+      const owner = profileUid ? profiles.get(profileUid) : null;
+      return { name: String(owner?.displayName ?? owner?.username ?? "Mánager"), username: String(owner?.username ?? "") };
+    };
+    const playersWithOwner = marketPlayers.map((player) => ({
+      ...player,
+      ...(player.ownerUid ? {
+        ownerName: userLabel(player.ownerUid).name,
+        ownerUsername: userLabel(player.ownerUid).username,
+        ownerFantasyCount: marketPlayers.filter((item) => item.ownerUid === player.ownerUid).length,
+      } : {}),
+    }));
+    const offersWithNames = offers.map((offer) => ({
+      ...offer,
+      buyerName: userLabel(String(offer.buyerUid ?? "")).name,
+      buyerUsername: userLabel(String(offer.buyerUid ?? "")).username,
+      sellerName: userLabel(String(offer.sellerUid ?? "")).name,
+      sellerUsername: userLabel(String(offer.sellerUid ?? "")).username,
+      creatorName: userLabel(String(offer.creatorUid ?? "")).name,
+      creatorUsername: userLabel(String(offer.creatorUid ?? "")).username,
+      recipientName: userLabel(String(offer.recipientUid ?? "")).name,
+      recipientUsername: userLabel(String(offer.recipientUid ?? "")).username,
+    }));
+    return json(200, { players: playersWithOwner, roster, offers: offersWithNames });
   }
   if (event.httpMethod !== "POST") return methodNotAllowed(["GET", "POST"]);
   const body = bodyOf(event);
@@ -38,6 +84,7 @@ export const handler: Handler = async (event) => run(async () => {
     const prior = state.idempotency[key];
     if (prior) return prior.result;
     const player = state.fantasyPlayers[playerId];
+    if (player?.archived === true) throw Object.assign(new Error("Este jugador ya no está disponible en el mercado."), { statusCode: 409 });
     const rosterCount = () => Object.values(state.fantasyPlayers).filter((item) => item.ownerUid === uid).length;
     const ensureSlot = () => { if (rosterCount() >= 5) throw Object.assign(new Error("Tu plantilla ya tiene cinco jugadores."), { statusCode: 409 }); };
     if (action === "buy") {

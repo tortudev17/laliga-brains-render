@@ -1,24 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { limitToLast, onValue, orderByChild, query, ref } from "firebase/database";
+import { endBefore, get, limitToLast, onValue, orderByChild, query, ref } from "firebase/database";
 import { AlertCircle, CalendarDays, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { database, firebaseConfigured } from "../services/firebase/client";
 import type { MatchRecord, TeamStats } from "../types/domain";
-import { buildPerformanceSeries, type PerformanceMetric } from "../utils/performance-series";
+
+const MATCH_PAGE_SIZE = 8;
 
 const emptyStats: TeamStats = { played: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, goalDifference: 0, points: 0, streak: "—", recentResults: [] };
 
 export function HomePage() {
-  const [matches, setMatches] = useState<MatchRecord[]>([]);
+  const [latestMatches, setLatestMatches] = useState<MatchRecord[]>([]);
+  const [olderMatches, setOlderMatches] = useState<MatchRecord[]>([]);
   const [teamStats, setTeamStats] = useState<Record<string, TeamStats>>({});
   const [loading, setLoading] = useState(firebaseConfigured);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasOlderMatches, setHasOlderMatches] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!firebaseConfigured || !database) { setLoading(false); return; }
-    const unsubscribeMatches = onValue(query(ref(database, "laligaBrains/football/matches"), orderByChild("playedAt"), limitToLast(8)), (snapshot) => {
+    const unsubscribeMatches = onValue(query(ref(database, "laligaBrains/football/matches"), orderByChild("playedAt"), limitToLast(MATCH_PAGE_SIZE)), (snapshot) => {
       const value = snapshot.val() as Record<string, Omit<MatchRecord, "id">> | null;
-      setMatches(value ? Object.entries(value).map(([id, match]) => ({ ...match, id })) : []);
+      const rows = value ? Object.entries(value).map(([id, match]) => ({ ...match, id })) : [];
+      setLatestMatches(rows);
+      setHasOlderMatches(rows.length === MATCH_PAGE_SIZE);
     }, () => { setError("No se han podido cargar los resultados recientes."); setLoading(false); });
     const unsubscribeStats = onValue(ref(database, "laligaBrains/football/teamStats"), (snapshot) => {
       setTeamStats((snapshot.val() ?? {}) as Record<string, TeamStats>);
@@ -30,8 +36,32 @@ export function HomePage() {
 
   const stats3 = normalizeTeamStats(teamStats["3ESO"]);
   const stats4 = normalizeTeamStats(teamStats["4ESO"]);
-  const sortedMatches = useMemo(() => [...matches].sort((a, b) => b.playedAt - a.playedAt), [matches]);
-  const recentChronological = useMemo(() => [...matches].sort((a, b) => a.playedAt - b.playedAt), [matches]);
+  const matches = useMemo(() => {
+    const byId = new Map([...olderMatches, ...latestMatches].map((match) => [match.id, match]));
+    return [...byId.values()].sort((a, b) => a.playedAt - b.playedAt || a.id.localeCompare(b.id));
+  }, [olderMatches, latestMatches]);
+  const sortedMatches = useMemo(() => [...matches].reverse(), [matches]);
+  const totalMatches = Math.max(stats3.played, stats4.played, matches.length);
+
+  const loadOlderMatches = async () => {
+    if (!database || !hasOlderMatches || loadingOlder || !matches.length) return;
+    const oldest = matches[0];
+    setLoadingOlder(true);
+    try {
+      const snapshot = await get(query(ref(database, "laligaBrains/football/matches"), orderByChild("playedAt"), endBefore(oldest.playedAt, oldest.id), limitToLast(MATCH_PAGE_SIZE)));
+      const value = snapshot.val() as Record<string, Omit<MatchRecord, "id">> | null;
+      const rows = value ? Object.entries(value).map(([id, match]) => ({ ...match, id })) : [];
+      setOlderMatches((current) => {
+        const byId = new Map([...rows, ...current].map((match) => [match.id, match]));
+        return [...byId.values()].sort((a, b) => a.playedAt - b.playedAt || a.id.localeCompare(b.id));
+      });
+      setHasOlderMatches(rows.length === MATCH_PAGE_SIZE);
+    } catch {
+      setError("No se han podido cargar los partidos anteriores.");
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   return <>
     <div className="page-heading"><div><h1>LaLiga Brains</h1><p>La rivalidad de 3 ESO y 4 ESO, partido a partido.</p></div><Link to="/partidos" className="link-arrow">Historial completo <ChevronRight size={17} /></Link></div>
@@ -55,51 +85,36 @@ export function HomePage() {
       <TeamPanel team="4 ESO" stats={stats4} side="right" />
     </section>
 
-    <section className="performance-section" aria-label="Evolución de la rivalidad">
-      <div className="section-heading"><div><h2>Rendimiento reciente</h2><p>Puntos y goles en los últimos ocho partidos</p></div></div>
+    <section className="performance-section" aria-label="Totales de la rivalidad">
+      <div className="section-heading"><div><h2>Totales de la rivalidad</h2><p>Balance acumulado de todos los partidos registrados</p></div></div>
       <div className="performance-grid">
-        <PerformanceChart matches={recentChronological} metric="points" title="Puntos por partido" />
-        <PerformanceChart matches={recentChronological} metric="goals" title="Goles por partido" />
+        <AggregateChart threeValue={stats3.goalsFor} fourValue={stats4.goalsFor} title="Goles totales" unit="goles" />
+        <AggregateChart threeValue={stats3.points} fourValue={stats4.points} title="Puntos totales" unit="puntos" />
       </div>
     </section>
 
     <section className="match-history-section">
-      <div className="section-heading"><div><h2>Historial de partidos</h2><p>Todos los resultados de la rivalidad</p></div><Link to="/partidos" className="link-arrow">Ver partidos <ChevronRight size={17} /></Link></div>
+      <div className="section-heading"><div><h2>Historial de partidos</h2><p>{totalMatches} {totalMatches === 1 ? "partido registrado" : "partidos registrados"} en total</p></div><Link to="/partidos" className="link-arrow">Ver partidos <ChevronRight size={17} /></Link></div>
       <div className="table-scroll match-history-scroll"><table className="match-table match-history-table"><thead><tr><th>Fecha</th><th className="match-team-column">Local</th><th className="center">Resultado</th><th className="match-team-column">Visitante</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={4} className="table-empty">Cargando resultados…</td></tr> : sortedMatches.length ? sortedMatches.slice(0, 8).map((match) => <tr key={match.id}><td>{formatDate(match.playedAt)}</td><td className="match-team-column">3 ESO</td><td className="score-cell"><span className="score-desktop">{match.score3ESO} — {match.score4ESO}</span><span className="score-mobile"><span>3 ESO <b>{match.score3ESO}</b></span><span>4 ESO <b>{match.score4ESO}</b></span></span></td><td className="match-team-column">4 ESO</td></tr>) : <tr><td colSpan={4} className="table-empty"><div className="empty-ball">⚽</div><strong>Aún no hay partidos disputados</strong><span>Cuando se juegue el primer partido, aparecerá aquí el historial completo.</span></td></tr>}</tbody>
+        <tbody>{loading ? <tr><td colSpan={4} className="table-empty">Cargando resultados…</td></tr> : sortedMatches.length ? sortedMatches.map((match) => <tr key={match.id}><td>{formatDate(match.playedAt)}</td><td className="match-team-column">3 ESO</td><td className="score-cell"><span className="score-desktop">{match.score3ESO} — {match.score4ESO}</span><span className="score-mobile"><span>3 ESO <b>{match.score3ESO}</b></span><span>4 ESO <b>{match.score4ESO}</b></span></span></td><td className="match-team-column">4 ESO</td></tr>) : <tr><td colSpan={4} className="table-empty"><div className="empty-ball">⚽</div><strong>Aún no hay partidos disputados</strong><span>Cuando se juegue el primer partido, aparecerá aquí el historial completo.</span></td></tr>}</tbody>
       </table></div>
-      {sortedMatches.length > 0 && <div className="table-footnote"><CalendarDays size={15} /> {sortedMatches.length} {sortedMatches.length === 1 ? "partido registrado" : "partidos registrados"}</div>}
+      {sortedMatches.length > 0 && <div className="table-footnote"><CalendarDays size={15} /> Mostrando {sortedMatches.length} de {totalMatches} {totalMatches === 1 ? "partido" : "partidos"} registrados</div>}
+      {hasOlderMatches && <button className="button button-secondary load-older-matches" disabled={loadingOlder} onClick={() => void loadOlderMatches()}>{loadingOlder ? "Cargando…" : "Cargar partidos anteriores"}</button>}
     </section>
   </>;
 }
 
-function PerformanceChart({ matches, metric, title }: { matches: MatchRecord[]; metric: PerformanceMetric; title: string }) {
-  const points = buildPerformanceSeries(matches, metric);
-  const maxValue = Math.max(metric === "points" ? 3 : 1, ...points.flatMap((point) => [point.threeEso, point.fourEso]));
-  const plot = (key: "threeEso" | "fourEso") => points.map((point, index) => {
-    const x = points.length < 2 ? 300 : 40 + index * (520 / (points.length - 1));
-    const y = 155 - point[key] / maxValue * 125;
-    return `${x},${y}`;
-  }).join(" ");
+function AggregateChart({ threeValue, fourValue, title, unit }: { threeValue: number; fourValue: number; title: string; unit: string }) {
+  const maxValue = Math.max(threeValue, fourValue, 1);
+  const teams = [{ name: "3 ESO", value: threeValue, className: "three" }, { name: "4 ESO", value: fourValue, className: "four" }];
   return <article className="performance-chart">
     <h3>{title}</h3>
-    {points.length ? <>
-      <div className="chart-legend"><span><i className="chart-dot three"/>3 ESO</span><span><i className="chart-dot four"/>4 ESO</span></div>
-      <svg viewBox="0 0 600 190" role="img" aria-label={`${title}, comparativa de 3 ESO y 4 ESO`} preserveAspectRatio="none">
-        {[0, 1, 2, 3].map((index) => <line key={index} x1="40" x2="560" y1={30 + index * 41.5} y2={30 + index * 41.5} className="chart-gridline" />)}
-        <text x="12" y="34" className="chart-axis-label">{maxValue}</text><text x="22" y="159" className="chart-axis-label">0</text>
-        <polyline points={plot("threeEso")} className="chart-line chart-line-three" />
-        <polyline points={plot("fourEso")} className="chart-line chart-line-four" />
-        {points.map((point, index) => {
-          const x = points.length < 2 ? 300 : 40 + index * (520 / (points.length - 1));
-          return <g key={point.matchId}>
-            <circle cx={x} cy={155 - point.threeEso / maxValue * 125} r="4" className="chart-point-three"><title>{point.label}: 3 ESO, {point.threeEso}</title></circle>
-            <circle cx={x} cy={155 - point.fourEso / maxValue * 125} r="4" className="chart-point-four"><title>{point.label}: 4 ESO, {point.fourEso}</title></circle>
-          </g>;
-        })}
-      </svg>
-      <div className="chart-end-labels"><span>{points[0].label}</span><span>{points[points.length - 1].label}</span></div>
-    </> : <div className="chart-empty">El gráfico aparecerá cuando haya resultados.</div>}
+    <div className="aggregate-chart" role="img" aria-label={`${title}: 3 ESO ${threeValue} ${unit}, 4 ESO ${fourValue} ${unit}`}>
+      {teams.map((team) => <div className="aggregate-chart-row" key={team.name}>
+        <div className="aggregate-chart-label"><strong>{team.name}</strong><span>{team.value} {unit}</span></div>
+        <div className="aggregate-chart-track"><span className={`aggregate-chart-bar ${team.className}`} style={{ width: `${team.value === 0 ? 0 : Math.max(4, team.value / maxValue * 100)}%` }} /></div>
+      </div>)}
+    </div>
   </article>;
 }
 

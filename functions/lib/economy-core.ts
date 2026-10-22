@@ -26,7 +26,7 @@ export function applyWalletDelta(state: EconomyState, walletUid: string, amount:
   const existing = state.idempotency[idempotencyKey];
   if (existing) return existing.result as { balance: number; transactionId: string };
   const balance = state.wallets[walletUid] ?? 0;
-  if (amount < 0 && !allowDebt && balance < Math.abs(amount)) throw Object.assign(new Error("No tienes monedas suficientes."), { statusCode: 409 });
+  if (amount < 0 && !allowDebt && balance < Math.abs(amount)) throw Object.assign(new Error(`Saldo insuficiente: se necesitan ${Math.abs(amount)} monedas y hay ${balance}.`), { statusCode: 409 });
   const balanceAfter = balance + amount;
   const transactionId = randomUUID();
   state.wallets[walletUid] = balanceAfter;

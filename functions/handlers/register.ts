@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Handler } from "../lib/runtime-types";
 import { currentRuntimeEnv, firebaseDb } from "../lib/firebase-rest";
-import { createWalletCredit } from "../lib/economy";
+import { createWalletCredit, REGISTRATION_BONUS } from "../lib/economy";
 import { asBadRequest, json, run, bodyOf, methodNotAllowed } from "../lib/http";
 
 const schema = z.object({ username: z.string().min(3).max(20), password: z.string().min(10).max(128), role: z.enum(["player_3eso", "player_4eso", "spectator"]) });
@@ -53,7 +53,7 @@ export const handler: Handler = async (event) => run(async () => {
       const { mutateEconomy } = await import("../lib/economy");
       await mutateEconomy((state) => { state.fantasyPlayers[playerId] ??= { id: playerId, uid, name: username, value: 50, permanentInvestment: 0, ownerUid: null, ghost: false, createdAt: now }; return true; });
     }
-    await createWalletCredit(uid, 100, "registration_bonus", `registration:${uid}`);
+    await createWalletCredit(uid, REGISTRATION_BONUS, "registration_bonus", `registration:${uid}`);
     return json(201, { pendingApproval: pending, message: pending ? "La solicitud de jugador queda pendiente de aprobación." : "Cuenta creada." });
   } catch (error) {
     if (uid && idToken) {

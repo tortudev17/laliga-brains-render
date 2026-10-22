@@ -1,0 +1,38 @@
+.manager-profile-page{max-width:1000px;margin:0 auto;min-height:calc(100vh - 230px);padding-top:8px}
+.manager-back-link{display:inline-flex;align-items:center;gap:7px;margin-bottom:17px;color:#355675;font-size:12px;font-weight:700}
+.manager-back-link:hover{color:#9b762a}
+.manager-profile-header{position:relative;display:flex;align-items:center;gap:18px;padding:25px 27px;border:1px solid #e2e8ef;border-radius:13px;background:#fff;box-shadow:0 8px 23px rgba(19,42,70,.05)}
+.manager-profile-avatar{width:78px;height:78px;border:3px solid #fff;box-shadow:0 0 0 1px #e0e6ed,0 5px 14px rgba(21,42,68,.1);background:#eef2f7;color:#536b87}
+.manager-profile-identity{min-width:0}
+.manager-profile-kicker{display:flex;align-items:center;gap:6px;color:#a47b22;font-size:9px;font-weight:800;letter-spacing:.13em}
+.manager-profile-identity h1{margin:7px 0 3px;color:#112a4b;font:800 clamp(24px,4vw,33px)/1.1 Manrope,sans-serif;letter-spacing:-.05em;overflow-wrap:anywhere}
+.manager-profile-identity p{margin:0;color:#758297;font-size:12px;overflow-wrap:anywhere}
+.manager-profile-role{margin-left:auto;padding:8px 11px;border:1px solid #eadfbf;border-radius:99px;background:#fbf7eb;color:#866b2e;font-size:10px;font-weight:700;white-space:nowrap}
+.manager-profile-stat{display:flex;align-items:center;gap:13px;margin:15px 0;padding:17px 20px;border-radius:11px;background:#112a4b;color:#fff;box-shadow:0 7px 18px rgba(17,42,75,.12)}
+.manager-profile-stat>span{width:42px;height:42px;display:grid;place-items:center;border-radius:10px;background:#223e63;color:#f0c85b}
+.manager-profile-stat>div:nth-child(2){display:grid;gap:3px}
+.manager-profile-stat small{color:#d2dceb;font-size:10px}
+.manager-profile-stat strong{color:#fff;font:800 22px Manrope,sans-serif}
+.manager-profile-stat em{color:#e7c35e;font-size:12px;font-style:normal}
+.manager-profile-progress{height:6px;flex:1;overflow:hidden;margin-left:15px;border-radius:99px;background:rgba(255,255,255,.16)}
+.manager-profile-progress i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#c49b3b,#e5c467);transition:width .35s ease}
+.manager-profile-roster{overflow:hidden;border:1px solid #e2e8ef;border-radius:12px;background:#fff;box-shadow:0 5px 18px rgba(20,38,68,.04)}
+.manager-profile-section-heading{display:flex;align-items:center;justify-content:space-between;padding:18px 21px;border-bottom:1px solid #e9edf2}
+.manager-profile-section-heading>div>span{color:#a47b22;font-size:9px;font-weight:800;letter-spacing:.13em}
+.manager-profile-section-heading h2{margin:5px 0 0;color:#112a4b;font:800 17px Manrope,sans-serif}
+.manager-profile-section-heading>svg{color:#b18a35}
+.manager-profile-player-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:17px}
+.manager-profile-player{min-height:65px;display:grid;grid-template-columns:39px minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 12px;border:1px solid #e9edf2;border-radius:9px;background:#fff;animation:manager-profile-in .3s both;transition:border-color .15s,box-shadow .15s,transform .15s}
+.manager-profile-player:hover{transform:translateY(-1px);border-color:#d5c28e;box-shadow:0 5px 14px rgba(20,38,68,.06)}
+.manager-profile-player-mark{width:38px;height:38px;display:grid;place-items:center;border:1px solid #eadfbf;border-radius:50%;background:#f8f1df;color:#836a31;font:800 11px Manrope,sans-serif}
+.manager-profile-player>strong{min-width:0;overflow-wrap:anywhere;color:#274260;font-size:11px}
+.manager-profile-player>span{padding:6px 7px;border-radius:6px;background:#f8f2e2;color:#806323;font:800 10px Manrope,sans-serif;white-space:nowrap}
+.manager-profile-player>span small{font:600 8px "DM Sans",sans-serif}
+.manager-profile-no-players,.manager-profile-empty,.manager-profile-skeleton{min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:22px;text-align:center;color:#8591a1}
+.manager-profile-no-players svg{color:#b18a35}
+.manager-profile-no-players strong,.manager-profile-empty h1{color:#274260;font:800 14px Manrope,sans-serif}
+.manager-profile-no-players p,.manager-profile-empty p{margin:0;color:#7b8797;font-size:11px;line-height:1.5}
+.manager-profile-empty h1{font-size:21px}
+.manager-profile-skeleton{min-height:260px}
+@keyframes manager-profile-in{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:620px){.manager-profile-page{padding-top:0}.manager-back-link{margin-bottom:13px}.manager-profile-header{align-items:flex-start;gap:13px;padding:17px 15px;border-radius:10px}.manager-profile-avatar{width:59px!important;height:59px!important;flex:0 0 59px}.manager-profile-kicker{font-size:8px}.manager-profile-identity h1{font-size:23px}.manager-profile-identity p{font-size:10px}.manager-profile-role{position:absolute;right:12px;bottom:12px;padding:6px 8px;font-size:8px}.manager-profile-stat{gap:9px;margin:11px 0;padding:13px;border-radius:9px}.manager-profile-stat>span{width:36px;height:36px}.manager-profile-stat small{font-size:9px}.manager-profile-stat strong{font-size:19px}.manager-profile-progress{margin-left:auto}.manager-profile-section-heading{padding:15px}.manager-profile-player-list{grid-template-columns:1fr;padding:11px;gap:7px}.manager-profile-player{grid-template-columns:35px minmax(0,1fr) auto;min-height:59px;padding:8px}.manager-profile-player-mark{width:34px;height:34px;font-size:10px}}

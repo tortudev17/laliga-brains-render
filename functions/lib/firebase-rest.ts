@@ -162,7 +162,9 @@ class DatabaseReference {
   orderByKey() { return this.withQuery({ orderBy: JSON.stringify("$key") }); }
   limitToFirst(count: number) { return this.withQuery({ limitToFirst: count }); }
   limitToLast(count: number) { return this.withQuery({ limitToLast: count }); }
-  equalTo(value: string | number | boolean) { return this.withQuery({ equalTo: value }); }
+  // Realtime Database expects query constraints as JSON primitives. In
+  // particular, string values must be quoted (e.g. equalTo="active").
+  equalTo(value: string | number | boolean) { return this.withQuery({ equalTo: JSON.stringify(value) }); }
   private withQuery(values: QueryOptions) { return new DatabaseReference(this.path, { ...this.queryOptions, ...values }); }
   async get(): Promise<SnapshotLike> { return this.request("GET"); }
   async once(_event: "value"): Promise<SnapshotLike> { return this.get(); }

@@ -4,7 +4,7 @@ import { applyWalletDelta, mutateEconomy, type EconomyState } from "../lib/econo
 import { estimateProbability, expireOldRounds, retirePredictionEconomy } from "../lib/predictions";
 import { isWeekday, madridDateKey, madridHour } from "../lib/time";
 import { json, run } from "../lib/http";
-import { reconcilePendingMatchActions } from "./piero-admin";
+import { reconcilePendingManualGoalAdjustments, reconcilePendingMatchActions } from "./piero-admin";
 
 export const handler: Handler = async () => run(async () => {
   const now = new Date();
@@ -16,8 +16,9 @@ export const handler: Handler = async () => run(async () => {
   const expiredRounds = await expireOldRounds(dateKey);
   const reconciled = await reconcilePendingOperations();
   const matchesReconciled = await reconcilePendingMatchActions();
+  const manualGoalsReconciled = await reconcilePendingManualGoalAdjustments();
   await reconcileMatchRewards();
-  return json(200, { ok: true, dateKey, generated, expiredRounds: expiredRounds.length, predictionsCancelled: expiredRounds.reduce((sum, item) => sum + item.cancelled, 0), reconciled, matchesReconciled });
+  return json(200, { ok: true, dateKey, generated, expiredRounds: expiredRounds.length, predictionsCancelled: expiredRounds.reduce((sum, item) => sum + item.cancelled, 0), reconciled, matchesReconciled, manualGoalsReconciled });
 });
 
 async function generateRound(dateKey: string) {

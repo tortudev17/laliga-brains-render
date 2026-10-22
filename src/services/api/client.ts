@@ -30,3 +30,4 @@ export async function registerAccount(username: string, password: string, role: 
   const result = await apiRequest<{ pendingApproval: boolean }>("register", { username: normalized, password, role });
   return result;
 }
+

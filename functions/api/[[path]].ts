@@ -6,6 +6,7 @@ import { handler as createPost } from "../handlers/create-post";
 import { handler as fantasyAction } from "../handlers/fantasy-action";
 import { handler as imageUrl } from "../handlers/image-url";
 import { handler as leaderboard } from "../handlers/leaderboard";
+import { handler as managerProfile } from "../handlers/manager-profile";
 import { handler as notificationsAction } from "../handlers/notifications-action";
 import { handler as penaltyAction } from "../handlers/penalty-action";
 import { handler as playerProfile } from "../handlers/player-profile";
@@ -29,6 +30,7 @@ const routes: Record<string, Handler> = {
   "fantasy-action": fantasyAction,
   "image-url": imageUrl,
   leaderboard,
+  "manager-profile": managerProfile,
   "notifications-action": notificationsAction,
   "penalty-action": penaltyAction,
   "player-profile": playerProfile,
