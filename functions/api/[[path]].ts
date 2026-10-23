@@ -1,5 +1,5 @@
 import type { Handler, RuntimeRequestContext } from "../lib/runtime-types";
-import { withFirebaseRuntime, verifyFirebaseIdToken, getPieroDatabaseToken, getFirebaseDatabaseAccessToken, firebaseDb, encryptSecret } from "../lib/firebase-rest";
+import { withFirebaseRuntime, verifyFirebaseIdToken, getPieroDatabaseToken, firebaseDb, encryptSecret } from "../lib/firebase-rest";
 import { handler as accountStatus } from "../handlers/account-status";
 import { handler as changePassword } from "../handlers/change-password";
 import { handler as createPost } from "../handlers/create-post";
@@ -61,19 +61,15 @@ export const onRequest = async ({ request, env, params }: RuntimeRequestContext)
 
     const route = routes[path];
     if (!route || request.method === "HEAD") return jsonResponse(404, { error: "No se encontró el recurso." });
-    // Handlers authenticate callers before database access. Once configured,
-    // one dedicated server identity handles shared database reads and writes;
-    // the Piero login remains a separate gate for its admin routes.
-    const usesServerServiceAccount = Boolean(env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    const usesPieroServiceSession = !usesServerServiceAccount && (path === "piero-data" || path === "piero-admin" || path === "school-scheduler");
+    // Forward the caller's Firebase ID token to Realtime Database. Render
+    // proxies the request; Firebase still evaluates it as the signed-in user.
+    const usesPieroServiceSession = path === "piero-data" || path === "piero-admin" || path === "school-scheduler";
     const databaseToken = usesPieroServiceSession
       ? await getPieroDatabaseToken(env)
-      : usesServerServiceAccount
-        ? await getFirebaseDatabaseAccessToken(env)
-        : request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
+      : request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
     const url = new URL(request.url);
     const event = await toHandlerEvent(request, url);
-    const response = await withFirebaseRuntime({ env, databaseToken, databaseTokenType: usesServerServiceAccount ? "google-oauth" : "firebase-id" }, () => Promise.resolve(route(event)));
+    const response = await withFirebaseRuntime({ env, databaseToken }, () => Promise.resolve(route(event)));
     return new Response(response.body ?? "", { status: response.statusCode, headers: { ...corsHeaders(request), "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8", ...response.headers } });
   } catch (error) {
     const status = typeof error === "object" && error && "statusCode" in error ? Number(error.statusCode) : 500;
@@ -196,8 +192,7 @@ async function finishPieroUnlock(request: Request, env: RuntimeRequestContext["e
     encryptSecret(authResult.refreshToken, env.PIERO_TOKEN_ENCRYPTION_KEY),
     encryptSecret(JSON.stringify({ idToken: authResult.idToken, expiresAt: now + Number(authResult.expiresIn ?? 3600) * 1000 }), env.PIERO_TOKEN_ENCRYPTION_KEY),
   ]);
-  const databaseToken = env.FIREBASE_SERVICE_ACCOUNT_JSON ? await getFirebaseDatabaseAccessToken(env) : authResult.idToken;
-  await withFirebaseRuntime({ env, databaseToken, databaseTokenType: env.FIREBASE_SERVICE_ACCOUNT_JSON ? "google-oauth" : "firebase-id" }, async () => {
+  await withFirebaseRuntime({ env, databaseToken: authResult.idToken }, async () => {
     const profileRef = firebaseDb.ref(`laligaBrains/identity/users/${claims.uid}`);
     const existingProfile = (await profileRef.get()).val() as Record<string, unknown> | null;
     if (existingProfile && existingProfile.accountStatus !== "active") throw Object.assign(new Error("La cuenta de Piero está suspendida en la base de datos."), { statusCode: 403 });

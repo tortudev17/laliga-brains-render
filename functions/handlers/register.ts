@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Handler } from "../lib/runtime-types";
-import { currentRuntimeEnv, firebaseDb, getFirebaseDatabaseAccessToken, withFirebaseRuntime } from "../lib/firebase-rest";
+import { currentRuntimeEnv, firebaseDb, withFirebaseRuntime } from "../lib/firebase-rest";
 import { createWalletCredit, REGISTRATION_BONUS } from "../lib/economy";
 import { asBadRequest, json, run, bodyOf, methodNotAllowed } from "../lib/http";
 
@@ -31,9 +31,7 @@ export const handler: Handler = async (event) => run(async () => {
     }
     uid = authResult.localId;
     idToken = authResult.idToken;
-    const databaseToken = env.FIREBASE_SERVICE_ACCOUNT_JSON ? await getFirebaseDatabaseAccessToken(env) : idToken;
-    const databaseTokenType = env.FIREBASE_SERVICE_ACCOUNT_JSON ? "google-oauth" : "firebase-id";
-    return await withFirebaseRuntime({ env, databaseToken, databaseTokenType }, async () => {
+    return await withFirebaseRuntime({ env, databaseToken: idToken }, async () => {
       const reservation = await claim.transaction((current) => current === null ? { status: "reserved", reservationId, createdAt: Date.now() } : undefined, undefined, false);
       if (!reservation.committed) throw Object.assign(new Error("Ese nombre de usuario ya está en uso."), { statusCode: 409 });
       const enhancedSnapshot = await firebaseDb.ref("laligaBrains/config/siteSettings/enhancedSecurity").get();
@@ -60,9 +58,7 @@ export const handler: Handler = async (event) => run(async () => {
   } catch (error) {
     if (uid && idToken) {
       await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken }) }).catch(() => undefined);
-      const databaseToken = env.FIREBASE_SERVICE_ACCOUNT_JSON ? await getFirebaseDatabaseAccessToken(env) : idToken;
-      const databaseTokenType = env.FIREBASE_SERVICE_ACCOUNT_JSON ? "google-oauth" : "firebase-id";
-      await withFirebaseRuntime({ env, databaseToken, databaseTokenType }, async () => {
+      await withFirebaseRuntime({ env, databaseToken: idToken }, async () => {
         await firebaseDb.ref(`laligaBrains/identity/users/${uid}`).remove().catch(() => undefined);
         await firebaseDb.ref(`laligaBrains/identity/registrationApprovals/${uid}`).remove().catch(() => undefined);
         await claim.transaction((current) => current?.uid === uid || current?.reservationId === reservationId ? null : current, undefined, false).catch(() => undefined);

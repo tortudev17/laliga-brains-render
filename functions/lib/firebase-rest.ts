@@ -1,5 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { sign } from "node:crypto";
 import type { RuntimeEnv } from "./runtime-types";
 
 const PROJECT_ID = "laliga-brains";
@@ -23,7 +22,6 @@ export interface DecodedIdToken {
 export interface FirebaseRuntimeContext {
   env: RuntimeEnv;
   databaseToken: string;
-  databaseTokenType?: "firebase-id" | "google-oauth";
 }
 
 const runtimeContext = new AsyncLocalStorage<FirebaseRuntimeContext>();
@@ -63,48 +61,6 @@ export async function getPieroDatabaseToken(env: RuntimeEnv): Promise<string> {
     encryptSecret(JSON.stringify({ idToken: tokens.id_token, expiresAt: Date.now() + ttl * 1000 }), env.PIERO_TOKEN_ENCRYPTION_KEY).then((value) => env.PIERO_KV.put("firebase:piero:access", value, { expirationTtl: ttl })),
   ]);
   return tokens.id_token;
-}
-
-const DATABASE_OAUTH_SCOPES = [
-  "https://www.googleapis.com/auth/userinfo.email",
-  "https://www.googleapis.com/auth/firebase.database",
-].join(" ");
-let serviceAccessToken: { token: string; expiresAt: number } | undefined;
-
-/** Exchange the dedicated server identity for a short-lived Database access token. */
-export async function getFirebaseDatabaseAccessToken(env: RuntimeEnv): Promise<string> {
-  if (!env.FIREBASE_SERVICE_ACCOUNT_JSON) throw Object.assign(new Error("La identidad de servidor de Firebase no está configurada."), { statusCode: 503 });
-  if (serviceAccessToken && serviceAccessToken.expiresAt > Date.now() + 60_000) return serviceAccessToken.token;
-
-  let account: { type?: string; project_id?: string; client_email?: string; private_key?: string };
-  try { account = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON); }
-  catch { throw Object.assign(new Error("La configuración de la identidad de servidor de Firebase no es válida."), { statusCode: 503 }); }
-  if (account.type !== "service_account" || account.project_id !== env.FIREBASE_PROJECT_ID || !account.client_email || !account.private_key) {
-    throw Object.assign(new Error("La identidad de servidor no pertenece al proyecto Firebase configurado."), { statusCode: 503 });
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  const assertion = [
-    base64UrlJson({ alg: "RS256", typ: "JWT" }),
-    base64UrlJson({ iss: account.client_email, scope: DATABASE_OAUTH_SCOPES, aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 }),
-  ].join(".");
-  const signature = sign("RSA-SHA256", Buffer.from(assertion), account.private_key).toString("base64url");
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${assertion}.${signature}` }),
-  });
-  const result = await response.json() as { access_token?: string; expires_in?: number; error?: string };
-  if (!response.ok || !result.access_token) {
-    console.error("Google no pudo emitir credenciales para Firebase:", result.error ?? response.status);
-    throw Object.assign(new Error("No se pudo autenticar la identidad de servidor de Firebase."), { statusCode: 503 });
-  }
-  serviceAccessToken = { token: result.access_token, expiresAt: Date.now() + Math.max(60, Number(result.expires_in ?? 3600)) * 1000 };
-  return serviceAccessToken.token;
-}
-
-function base64UrlJson(value: unknown) {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
 export async function encryptSecret(value: string, keyValue: string) {
@@ -260,10 +216,9 @@ class DatabaseReference {
   }
   private requestAuthentication(url: URL): { url: URL; headers: Record<string, string> } {
     const requestUrl = new URL(url);
-    const { databaseToken, databaseTokenType = "firebase-id" } = currentFirebaseRuntime();
+    const { databaseToken } = currentFirebaseRuntime();
     requestUrl.searchParams.delete("auth");
     requestUrl.searchParams.delete("access_token");
-    if (databaseToken && databaseTokenType === "google-oauth") return { url: requestUrl, headers: { Authorization: `Bearer ${databaseToken}` } };
     if (databaseToken) requestUrl.searchParams.set("auth", databaseToken);
     return { url: requestUrl, headers: {} };
   }

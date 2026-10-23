@@ -23,7 +23,6 @@ export interface RuntimeEnv {
   FIREBASE_API_KEY: string;
   FIREBASE_DATABASE_URL: string;
   FIREBASE_PROJECT_ID: string;
-  FIREBASE_SERVICE_ACCOUNT_JSON?: string;
   PIERO_EMAIL: string;
   PIERO_PIN_SHA512: string;
   PIERO_TOKEN_ENCRYPTION_KEY: string;
