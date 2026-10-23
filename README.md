@@ -8,11 +8,12 @@ Create a Render Blueprint from this repository and apply `render.yaml`. It creat
 
 Set these values in the web service's Environment page:
 
+- `FIREBASE_SERVICE_ACCOUNT_JSON`: a Firebase service-account JSON key used only by the server. Store it as a Render secret; never commit it. Authenticated API handlers continue to verify each caller before accessing database data.
 - `PIERO_EMAIL`: the Firebase Authentication email used for the Piero account.
 - `PIERO_PIN_SHA512`: SHA-512 hex digest of the existing four-digit Piero PIN.
 - `PIERO_TOKEN_ENCRYPTION_KEY`: a new 32-byte Base64URL key. Do not reuse or commit it.
 
-Render generates `CRON_SECRET` and supplies the private `REDIS_URL` from the Render Key Value service. After the first deploy, unlock Piero mode once to establish the Firebase session in the new Render instance.
+Render generates `CRON_SECRET` and supplies the private `REDIS_URL` from the Render Key Value service. The Piero panel keeps its separate PIN-gated Firebase session.
 
 ## Run locally
 

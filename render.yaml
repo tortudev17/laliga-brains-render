@@ -26,6 +26,8 @@ services:
         value: https://laliga-brains-default-rtdb.europe-west1.firebasedatabase.app
       - key: FIREBASE_PROJECT_ID
         value: laliga-brains
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
       - key: PIERO_EMAIL
         sync: false
       - key: PIERO_PIN_SHA512

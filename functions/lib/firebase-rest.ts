@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { sign } from "node:crypto";
 import type { RuntimeEnv } from "./runtime-types";
 
 const PROJECT_ID = "laliga-brains";
@@ -22,6 +23,7 @@ export interface DecodedIdToken {
 export interface FirebaseRuntimeContext {
   env: RuntimeEnv;
   databaseToken: string;
+  databaseTokenType?: "firebase-id" | "google-oauth";
 }
 
 const runtimeContext = new AsyncLocalStorage<FirebaseRuntimeContext>();
@@ -61,6 +63,48 @@ export async function getPieroDatabaseToken(env: RuntimeEnv): Promise<string> {
     encryptSecret(JSON.stringify({ idToken: tokens.id_token, expiresAt: Date.now() + ttl * 1000 }), env.PIERO_TOKEN_ENCRYPTION_KEY).then((value) => env.PIERO_KV.put("firebase:piero:access", value, { expirationTtl: ttl })),
   ]);
   return tokens.id_token;
+}
+
+const DATABASE_OAUTH_SCOPES = [
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/firebase.database",
+].join(" ");
+let serviceAccessToken: { token: string; expiresAt: number } | undefined;
+
+/** Exchange the dedicated server identity for a short-lived Database access token. */
+export async function getFirebaseDatabaseAccessToken(env: RuntimeEnv): Promise<string> {
+  if (!env.FIREBASE_SERVICE_ACCOUNT_JSON) throw Object.assign(new Error("La identidad de servidor de Firebase no está configurada."), { statusCode: 503 });
+  if (serviceAccessToken && serviceAccessToken.expiresAt > Date.now() + 60_000) return serviceAccessToken.token;
+
+  let account: { type?: string; project_id?: string; client_email?: string; private_key?: string };
+  try { account = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT_JSON); }
+  catch { throw Object.assign(new Error("La configuración de la identidad de servidor de Firebase no es válida."), { statusCode: 503 }); }
+  if (account.type !== "service_account" || account.project_id !== env.FIREBASE_PROJECT_ID || !account.client_email || !account.private_key) {
+    throw Object.assign(new Error("La identidad de servidor no pertenece al proyecto Firebase configurado."), { statusCode: 503 });
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const assertion = [
+    base64UrlJson({ alg: "RS256", typ: "JWT" }),
+    base64UrlJson({ iss: account.client_email, scope: DATABASE_OAUTH_SCOPES, aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600 }),
+  ].join(".");
+  const signature = sign("RSA-SHA256", Buffer.from(assertion), account.private_key).toString("base64url");
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${assertion}.${signature}` }),
+  });
+  const result = await response.json() as { access_token?: string; expires_in?: number; error?: string };
+  if (!response.ok || !result.access_token) {
+    console.error("Google no pudo emitir credenciales para Firebase:", result.error ?? response.status);
+    throw Object.assign(new Error("No se pudo autenticar la identidad de servidor de Firebase."), { statusCode: 503 });
+  }
+  serviceAccessToken = { token: result.access_token, expiresAt: Date.now() + Math.max(60, Number(result.expires_in ?? 3600)) * 1000 };
+  return serviceAccessToken.token;
+}
+
+function base64UrlJson(value: unknown) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
 export async function encryptSecret(value: string, keyValue: string) {
@@ -175,13 +219,14 @@ class DatabaseReference {
     currentFirebaseRuntime();
     const url = this.url();
     for (let attempt = 0; attempt < 12; attempt++) {
-      const response = await fetch(this.withAuth(url), { headers: { "X-Firebase-ETag": "true" } });
+      const auth = this.requestAuthentication(url);
+      const response = await fetch(auth.url, { headers: { ...auth.headers, "X-Firebase-ETag": "true" } });
       const current = response.ok ? await response.json() : null;
       if (!response.ok && response.status !== 404) throw await databaseError(response);
       const etag = response.headers.get("ETag");
       const next = updateValue(current);
       if (next === undefined) return { committed: false, snapshot: new Snapshot(this.key, current) };
-      const write = await fetch(this.withAuth(url), { method: next === null ? "DELETE" : "PUT", headers: { "Content-Type": "application/json", ...(etag ? { "If-Match": etag } : {}) }, body: next === null ? undefined : JSON.stringify(next) });
+      const write = await fetch(auth.url, { method: next === null ? "DELETE" : "PUT", headers: { ...auth.headers, "Content-Type": "application/json", ...(etag ? { "If-Match": etag } : {}) }, body: next === null ? undefined : JSON.stringify(next) });
       if (write.status === 412) continue;
       if (!write.ok) throw await databaseError(write);
       return { committed: true, snapshot: new Snapshot(this.key, next) };
@@ -194,9 +239,11 @@ class DatabaseReference {
     return child;
   }
   private async request(method: string, value?: any): Promise<SnapshotLike> {
-    const response = await fetch(this.withAuth(this.url()), {
+    const auth = this.requestAuthentication(this.url());
+    const response = await fetch(auth.url, {
       method,
-      ...(method === "GET" ? {} : { headers: { "Content-Type": "application/json" }, ...(method !== "DELETE" ? { body: JSON.stringify(value) } : {}) }),
+      headers: { ...auth.headers, ...(method === "GET" ? {} : { "Content-Type": "application/json" }) },
+      ...(method !== "GET" && method !== "DELETE" ? { body: JSON.stringify(value) } : {}),
     });
     if (!response.ok) throw await databaseError(response);
     if (method === "DELETE") return new Snapshot(this.key, null);
@@ -211,19 +258,24 @@ class DatabaseReference {
     for (const [key, value] of Object.entries(this.queryOptions)) if (value !== undefined) url.searchParams.set(key, String(value));
     return url;
   }
-  private withAuth(url: URL) {
+  private requestAuthentication(url: URL): { url: URL; headers: Record<string, string> } {
     const requestUrl = new URL(url);
-    const databaseToken = currentFirebaseRuntime().databaseToken;
+    const { databaseToken, databaseTokenType = "firebase-id" } = currentFirebaseRuntime();
+    requestUrl.searchParams.delete("auth");
+    requestUrl.searchParams.delete("access_token");
+    if (databaseToken && databaseTokenType === "google-oauth") return { url: requestUrl, headers: { Authorization: `Bearer ${databaseToken}` } };
     if (databaseToken) requestUrl.searchParams.set("auth", databaseToken);
-    else requestUrl.searchParams.delete("auth");
-    return requestUrl;
+    return { url: requestUrl, headers: {} };
   }
 }
 
 async function databaseError(response: Response): Promise<Error> {
   const message = await response.text().catch(() => "");
   if (response.status === 401 || response.status === 403) return Object.assign(new Error("Firebase Realtime Database ha rechazado esta operación. Revisa las reglas de acceso."), { statusCode: 403 });
-  return Object.assign(new Error(`Firebase Realtime Database respondió con ${response.status}${message ? `: ${message.slice(0, 160)}` : ""}.`), { statusCode: response.status >= 500 ? 503 : 400 });
+  const safeMessage = /Index not defined/i.test(message)
+    ? "La consulta necesita un índice de Firebase que no está configurado."
+    : `Firebase Realtime Database respondió con ${response.status}.`;
+  return Object.assign(new Error(safeMessage), { statusCode: response.status >= 500 ? 503 : 400 });
 }
 
 export const firebaseDb = {
