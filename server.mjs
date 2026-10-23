@@ -56,7 +56,35 @@ app.get("/healthz", async (_request, response) => {
   }
 });
 
-app.use("/api", express.raw({ type: "*/*", limit: "1mb" }));
+app.use(["/identitytoolkit.googleapis.com", "/securetoken.googleapis.com"], express.raw({ type: "*/*", limit: "1mb" }));
+app.use(async (request, response, next) => {
+  const match = request.path.match(/^\/(identitytoolkit\.googleapis\.com|securetoken\.googleapis\.com)\/v1\/(.+)$/);
+  if (!match) return next();
+  const host = match[1];
+  const endpoint = match[2];
+  const allowed = host === "identitytoolkit.googleapis.com" ? /^accounts:[A-Za-z]+$/.test(endpoint) : endpoint === "token";
+  if (!allowed || request.method !== "POST") return response.status(404).json({ error: "No se encontró el recurso." });
+
+  try {
+    const target = new URL(`https://${host}/v1/${endpoint}${new URL(request.originalUrl, "http://render.internal").search}`);
+    const headers = new Headers({ "Content-Type": request.get("content-type") ?? "application/json" });
+    const locale = request.get("x-firebase-locale");
+    if (locale) headers.set("X-Firebase-Locale", locale);
+    const body = Buffer.isBuffer(request.body) ? request.body : undefined;
+    const upstream = await fetch(target, { method: "POST", headers, ...(body ? { body } : {}) });
+    response.status(upstream.status);
+    response.setHeader("Content-Type", upstream.headers.get("Content-Type") ?? "application/json; charset=utf-8");
+    response.setHeader("Cache-Control", "no-store");
+    const origin = request.get("origin");
+    if (origin && origin === `${request.protocol}://${request.get("host")}`) response.setHeader("Access-Control-Allow-Origin", origin);
+    response.send(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    console.error("Firebase Authentication proxy failed:", error instanceof Error ? error.message : "unknown error");
+    response.status(502).json({ error: { message: "Firebase Authentication no está disponible." } });
+  }
+});
+
+app.use("/api", express.raw({ type: "*/*", limit: "6mb" }));
 app.use("/api", async (request, response) => {
   try {
     const origin = `${request.protocol}://${request.get("host")}`;

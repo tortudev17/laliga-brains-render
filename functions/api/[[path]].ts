@@ -18,6 +18,7 @@ import { handler as register } from "../handlers/register";
 import { handler as schoolScheduler } from "../handlers/school-scheduler";
 import { handler as socialAction } from "../handlers/social-action";
 import { handler as socialFeed } from "../handlers/social-feed";
+import { handler as storageProxy } from "../handlers/storage-proxy";
 import { handler as walletAction } from "../handlers/wallet-action";
 import { handler as firebaseProxy } from "../handlers/firebase-proxy";
 import { handler as pieroData } from "../handlers/piero-data";
@@ -43,6 +44,7 @@ const routes: Record<string, Handler> = {
   "school-scheduler": schoolScheduler,
   "social-action": socialAction,
   "social-feed": socialFeed,
+  "storage-proxy": storageProxy,
   "wallet-action": walletAction,
   "firebase-proxy": firebaseProxy,
   "piero-data": pieroData,
@@ -70,7 +72,8 @@ export const onRequest = async ({ request, env, params }: RuntimeRequestContext)
     const url = new URL(request.url);
     const event = await toHandlerEvent(request, url);
     const response = await withFirebaseRuntime({ env, databaseToken }, () => Promise.resolve(route(event)));
-    return new Response(response.body ?? "", { status: response.statusCode, headers: { ...corsHeaders(request), "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8", ...response.headers } });
+    const body = response.body instanceof Uint8Array ? new Blob([response.body]) : response.body ?? "";
+    return new Response(body, { status: response.statusCode, headers: { ...corsHeaders(request), "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8", ...response.headers } });
   } catch (error) {
     const status = typeof error === "object" && error && "statusCode" in error ? Number(error.statusCode) : 500;
     const message = status < 500 && error instanceof Error ? error.message : status === 503 && error instanceof Error ? error.message : "No se pudo completar la operación. Inténtalo de nuevo más tarde.";
@@ -82,10 +85,13 @@ export const onRequest = async ({ request, env, params }: RuntimeRequestContext)
 async function toHandlerEvent(request: Request, url: URL) {
   const headers: Record<string, string> = {};
   request.headers.forEach((value, key) => { headers[key.toLowerCase()] = value; });
+  const rawBody = request.method === "GET" || request.method === "HEAD" ? undefined : new Uint8Array(await request.clone().arrayBuffer());
+  const isJson = (request.headers.get("content-type") ?? "").toLowerCase().includes("application/json");
   return {
     httpMethod: request.method,
     headers,
-    body: request.method === "GET" ? null : await request.clone().text(),
+    body: isJson && rawBody ? new TextDecoder().decode(rawBody) : null,
+    rawBody,
     queryStringParameters: Object.fromEntries(url.searchParams.entries()),
   } satisfies Parameters<Handler>[0];
 }

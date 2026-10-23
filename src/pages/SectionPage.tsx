@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Heart, Trophy, Users } from "lucide-react";
 import { Link } from "react-router-dom";
-import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from "firebase/storage";
-import { apiRequest, firebaseRead } from "../services/api/client";
+import { apiRequest, deleteFirebaseFile, downloadFirebaseFile, firebaseRead, uploadFirebaseFile } from "../services/api/client";
 import { useAuth } from "../app/AuthContext";
-import { getFirebaseStorage } from "../services/firebase/client";
 import { FantasyPage } from "./FantasyPage";
 
 export function SectionPage({ title }: { title: string }) {
@@ -51,11 +49,10 @@ function SocialPage() {
     if(!user)return;
     setBusy(true);setMessage("");const uploaded:string[]=[];
     try{
-      const storage=await getFirebaseStorage();
-      for(const file of images){const extension=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";const path=`social-post-images/${user.uid}/${crypto.randomUUID()}.${extension}`;uploaded.push(path);await uploadBytes(storageRef(storage,path),file,{contentType:file.type});}
+      for(const file of images){const extension=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";const path=`social-post-images/${user.uid}/${crypto.randomUUID()}.${extension}`;uploaded.push(path);await uploadFirebaseFile(path,file);}
       const result=await apiRequest<{dailyFreePostsRemaining:number}>("create-post",{text,images:uploaded});
       setText("");setImages([]);setRemaining(result.dailyFreePostsRemaining);setMessage("Publicación compartida.");await load();
-    }catch(error){const storage=await getFirebaseStorage();await Promise.all(uploaded.map((path)=>deleteObject(storageRef(storage,path)).catch(()=>undefined)));setMessage(error instanceof Error?error.message:"No se pudo publicar.");}
+    }catch(error){await Promise.all(uploaded.map((path)=>deleteFirebaseFile(path).catch(()=>undefined)));setMessage(error instanceof Error?error.message:"No se pudo publicar.");}
     finally{setBusy(false);}
   };
   const like=async(post:FeedPost)=>{try{await apiRequest("social-action",{action:post.liked?"unlike":"like",postId:post.id});await load();}catch(error){setMessage(error instanceof Error?error.message:"No se pudo actualizar el me gusta.");}};
@@ -69,7 +66,7 @@ function SocialPage() {
 
 function PostCard({post,ownPost,onPromote,onLike,onReport,onEdit,onDelete}:{post:FeedPost;ownPost:boolean;onPromote:(packageName:string)=>void;onLike:()=>void;onReport:()=>void;onEdit:()=>void;onDelete:()=>void}) {
   const [packageName,setPackageName]=useState("pequena");const [imageUrls,setImageUrls]=useState<string[]>([]);const cardRef=useRef<HTMLElement>(null);
-  useEffect(()=>{let alive=true;let started=false;const loadImages=()=>{if(started)return;started=true;void getFirebaseStorage().then(async(storage)=>Promise.all((post.images??[]).map(async(path)=>{try{return await getDownloadURL(storageRef(storage,path));}catch{return "";}}))).then((urls)=>{if(alive)setImageUrls(urls.filter(Boolean));});};const card=cardRef.current;if(!card||!post.images?.length)return;if(typeof IntersectionObserver==="undefined"){loadImages();return()=>{alive=false;};}const observer=new IntersectionObserver((entries)=>{if(entries.some((entry)=>entry.isIntersecting)){loadImages();observer.disconnect();}},{rootMargin:"300px"});observer.observe(card);return()=>{alive=false;observer.disconnect();};},[post.id,post.images]);
+  useEffect(()=>{let alive=true;let started=false;const objectUrls:string[]=[];const loadImages=()=>{if(started)return;started=true;void Promise.all((post.images??[]).map(async(path)=>{try{const blob=await downloadFirebaseFile(path);const url=URL.createObjectURL(blob);objectUrls.push(url);return url;}catch{return "";}})).then((urls)=>{if(alive)setImageUrls(urls.filter(Boolean));});};const card=cardRef.current;if(!card||!post.images?.length)return()=>{alive=false;};if(typeof IntersectionObserver==="undefined"){loadImages();return()=>{alive=false;for(const url of objectUrls)URL.revokeObjectURL(url);};}const observer=new IntersectionObserver((entries)=>{if(entries.some((entry)=>entry.isIntersecting)){loadImages();observer.disconnect();}},{rootMargin:"300px"});observer.observe(card);return()=>{alive=false;observer.disconnect();for(const url of objectUrls)URL.revokeObjectURL(url);};},[post.id,post.images]);
   useEffect(()=>{if(!post.promoted||!post.placementToken||!post.promotionId)return;const element=document.getElementById(`post-${post.id}`);if(!element)return;const observer=new IntersectionObserver((entries)=>{if(entries.some((entry)=>entry.isIntersecting&&entry.intersectionRatio>=0.7)){void apiRequest("promotion-action",{action:"view",promotionId:post.promotionId,placementToken:post.placementToken});observer.disconnect();}},{threshold:[0.7]});observer.observe(element);return()=>observer.disconnect();},[post.id,post.placementToken]);
   return <article ref={cardRef} id={`post-${post.id}`} className="post-row"><div className="post-author-row"><Link className="post-author-profile" to={`/perfil/${encodeURIComponent(post.authorUid)}`}>{post.authorName||"Comunidad"}</Link>{ownPost&&<div><button onClick={onEdit}>Editar</button><button onClick={onDelete}>Eliminar</button></div>}</div>{post.promoted&&<span className="promoted-label">Promoción · {post.creditedViews??0} / {post.targetViews??0} visualizaciones</span>}<p>{post.text}</p>{imageUrls.map((image,index)=><img className="post-image" key={`${post.id}-${index}`} src={image} loading="lazy" decoding="async" alt="Imagen de la publicación"/>)}<span>{new Date(post.createdAt).toLocaleString("es-ES",{dateStyle:"short",timeStyle:"short",timeZone:"Europe/Madrid"})}</span><div className="post-actions"><button onClick={onLike} aria-label={post.liked?"Quitar me gusta":"Me gusta"}><Heart size={16} fill={post.liked?"currentColor":"none"}/><span>{post.likeCount??0} me gusta</span></button><button onClick={onReport}>Informar</button></div>{ownPost&&<div className="promote-controls"><select value={packageName} onChange={(event)=>setPackageName(event.target.value)}><option value="pequena">Pequeña · 10 monedas · 5 visualizaciones</option><option value="mediana">Mediana · 25 monedas · 15 visualizaciones</option><option value="grande">Grande · 50 monedas · 30 visualizaciones</option></select><button onClick={()=>onPromote(packageName)}>Promocionar</button></div>}</article>;
 }

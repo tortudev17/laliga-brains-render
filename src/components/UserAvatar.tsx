@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { CircleUserRound } from "lucide-react";
-import { getDownloadURL, ref as storageRef } from "firebase/storage";
-import { getFirebaseStorage } from "../services/firebase/client";
+import { downloadFirebaseFile } from "../services/api/client";
 
 type UserAvatarProps = {
   photoPath?: string | null;
@@ -18,12 +17,16 @@ export function UserAvatar({ photoPath, name, size = 38, className = "" }: UserA
     setUrl("");
     if (!photoPath) return () => { active = false; };
 
-    void getFirebaseStorage()
-      .then((storage) => getDownloadURL(storageRef(storage, photoPath)))
-      .then((nextUrl) => { if (active) setUrl(nextUrl); })
+    let objectUrl = "";
+    void downloadFirebaseFile(photoPath)
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        if (active) setUrl(objectUrl);
+        else URL.revokeObjectURL(objectUrl);
+      })
       .catch(() => { if (active) setUrl(""); });
 
-    return () => { active = false; };
+    return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [photoPath]);
 
   return <span className={`user-avatar ${className}`} style={{ width: size, height: size }} aria-label={`Foto de ${name}`}>

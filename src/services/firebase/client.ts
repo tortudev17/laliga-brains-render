@@ -1,6 +1,5 @@
 import { initializeApp, getApps } from "firebase/app";
 import { connectAuthEmulator, getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
-import type { FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "AIzaSyA_VPCvZah7MJJA1hmzBeAwnSDvZ1nbY5Y",
@@ -22,27 +21,14 @@ const validDatabaseUrl = useEmulators
   ? /^http:\/\/127\.0\.0\.1:9000(?:\/|\?|$)/.test(firebaseConfig.databaseURL ?? "")
   : /^https:\/\/laliga-brains-default-rtdb\.europe-west1\.firebasedatabase\.app\/?$/.test(firebaseConfig.databaseURL ?? "");
 export const firebaseConfigured = Boolean(firebaseConfig.apiKey && validDatabaseUrl);
-let storagePromise: Promise<FirebaseStorage> | undefined;
-export function getFirebaseStorage() {
-  storagePromise ??= import("firebase/storage").then(({ getStorage, connectStorageEmulator }) => {
-    const instance = getStorage(app);
-    if (useEmulators) connectStorageEmulator(instance, "127.0.0.1", 9199);
-    return instance;
-  });
-  return storagePromise;
-}
 
 if (useEmulators) {
   connectAuthEmulator(auth, import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_URL ?? "http://127.0.0.1:9099", { disableWarnings: true });
+} else if (import.meta.env.PROD && typeof window !== "undefined") {
+  // Firebase Auth's REST traffic is sent to this same-origin Render proxy.
+  connectAuthEmulator(auth, window.location.origin, { disableWarnings: true });
 }
 
 void setPersistence(auth, browserLocalPersistence).catch((error: unknown) => {
   console.warn("No se pudo guardar la sesión en este navegador.", error);
 });
-export async function initializeAnalytics() {
-  if (typeof window !== "undefined") {
-    const analytics = await import("firebase/analytics");
-    if (await analytics.isSupported()) return analytics.getAnalytics(app);
-  }
-  return null;
-}

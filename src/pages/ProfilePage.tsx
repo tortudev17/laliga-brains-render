@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
-import { deleteObject, ref as storageRef, uploadBytes } from "firebase/storage";
 import { Coins, ShieldCheck, Camera } from "lucide-react";
 import { useAuth } from "../app/AuthContext";
-import { getFirebaseStorage } from "../services/firebase/client";
-import { apiRequest } from "../services/api/client";
+import { apiRequest, deleteFirebaseFile, uploadFirebaseFile } from "../services/api/client";
 import type { WalletView, CoinTransaction } from "../types/domain";
 import { UserAvatar } from "../components/UserAvatar";
 
@@ -55,16 +53,16 @@ export function ProfilePage() {
     const extension=file.type==="image/png"?"png":file.type==="image/webp"?"webp":"jpg";
     const path=`profilePhotos/${user.uid}/${crypto.randomUUID()}.${extension}`;
     const previousPath=photoPath;
-    let uploadedStorage: Awaited<ReturnType<typeof getFirebaseStorage>> | undefined;
+    let uploaded = false;
     try {
-      uploadedStorage=await getFirebaseStorage();
-      await uploadBytes(storageRef(uploadedStorage,path),file,{contentType:file.type});
+      await uploadFirebaseFile(path,file);
+      uploaded=true;
       await apiRequest("profile-action",{photoPath:path});
       setPhotoPath(path);
       setMessage("Foto de perfil actualizada.");
-      if (previousPath && previousPath !== path) await deleteObject(storageRef(uploadedStorage,previousPath)).catch(()=>undefined);
+      if (previousPath && previousPath !== path) await deleteFirebaseFile(previousPath).catch(()=>undefined);
     }
-    catch(error) { if(uploadedStorage)await deleteObject(storageRef(uploadedStorage,path)).catch(()=>undefined);setMessage(error instanceof Error?error.message:"No se pudo cargar la foto."); }
+    catch(error) { if(uploaded)await deleteFirebaseFile(path).catch(()=>undefined);setMessage(error instanceof Error?error.message:"No se pudo cargar la foto."); }
     finally { setBusy(false); }
   };
   const changePassword = async (event:React.FormEvent) => { event.preventDefault();setBusy(true);setMessage("");try{await apiRequest("change-password",{password:newPassword});setMessage("Contraseña actualizada. Actualizando la sesión…");setTimeout(()=>window.location.reload(),700);}catch(error){setMessage(error instanceof Error?error.message:"No se pudo cambiar la contraseña.");}finally{setBusy(false);}};
