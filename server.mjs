@@ -3,6 +3,7 @@ import Redis from "ioredis";
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { onRequest } from "./functions/api/[[path]].ts";
+import { decryptSecret, encryptSecret, verifyFirebaseIdToken } from "./functions/lib/firebase-rest.ts";
 
 const app = express();
 const port = Number(process.env.PORT ?? 10000);
@@ -43,6 +44,33 @@ const env = {
     },
   },
 };
+
+// One-time migration hook for importing the Cloudflare-encrypted Firebase
+// refresh token. Remove this hook and its environment variable after use.
+if (process.env.PIERO_REFRESH_IMPORT_JSON) {
+  let stage = "decrypt";
+  try {
+    const encryptedInput = JSON.parse(process.env.PIERO_REFRESH_IMPORT_JSON);
+    const refreshToken = await decryptSecret(JSON.stringify(encryptedInput), env.PIERO_TOKEN_ENCRYPTION_KEY);
+    stage = "refresh";
+    const refreshResponse = await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }),
+    });
+    const tokens = await refreshResponse.json();
+    if (!refreshResponse.ok || !tokens.id_token || !tokens.refresh_token) throw new Error("Firebase refresh failed");
+    stage = "identity check";
+    const claims = await verifyFirebaseIdToken(tokens.id_token, env);
+    if (claims.email?.toLowerCase() !== env.PIERO_EMAIL.toLowerCase()) throw new Error("Unexpected Firebase identity");
+    stage = "store";
+    await redis.set("firebase:piero:refresh", await encryptSecret(tokens.refresh_token, env.PIERO_TOKEN_ENCRYPTION_KEY));
+    await redis.del("firebase:piero:access");
+    console.info("Firebase credential import succeeded and identity was verified.");
+  } catch {
+    console.error(`Firebase credential import failed at ${stage}; no credential was stored.`);
+  }
+}
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);

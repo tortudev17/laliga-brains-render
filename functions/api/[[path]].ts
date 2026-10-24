@@ -65,12 +65,9 @@ export const onRequest = async ({ request, env, params }: RuntimeRequestContext)
 
     const route = routes[path];
     if (!route || request.method === "HEAD") return jsonResponse(404, { error: "No se encontró el recurso." });
-    // Forward the caller's Firebase ID token to Realtime Database. Render
-    // proxies the request; Firebase still evaluates it as the signed-in user.
-    const usesPieroServiceSession = path === "piero-data" || path === "piero-admin" || path === "school-scheduler";
-    const databaseToken = usesPieroServiceSession
-      ? await getPieroDatabaseToken(env)
-      : request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
+    // Match the source Cloudflare functions: Render proxies Firebase requests
+    // with the configured backend Firebase session.
+    const databaseToken = await getPieroDatabaseToken(env);
     const url = new URL(request.url);
     const event = await toHandlerEvent(request, url);
     const response = await withFirebaseRuntime({ env, databaseToken }, () => Promise.resolve(route(event)));
