@@ -32,7 +32,7 @@ export const handler: Handler = async (event) => run(async () => {
     const value = Number(player.value ?? 50);
     if (Number.isSafeInteger(value) && value > 0) assetValues.set(player.ownerUid, (assetValues.get(player.ownerUid) ?? 0) + value);
   }
-  const people = mapRows(users).map((item) => {
+  const people = mapRows(users).filter((item) => item.accountStatus !== "deleted").map((item) => {
     const walletBalance = Number(walletBalances[item.id] ?? 0);
     const assetValue = assetValues.get(item.id) ?? 0;
     return { uid: item.id, username: item.username, role: item.role, accountStatus: item.accountStatus, createdAt: item.createdAt, displayName: item.displayName, recommendationPriority: item.recommendationPriority, walletBalance, assetValue, netWorth: walletBalance + assetValue };
@@ -63,6 +63,10 @@ export const handler: Handler = async (event) => run(async () => {
     recipientName: managerLabel(offer.recipientUid).name,
     recipientUsername: managerLabel(offer.recipientUid).username,
   }));
+  const [economyPaused, deferredCredits] = await Promise.all([
+    firebaseDb.ref("laligaBrains/economy/state/economyPaused").get(),
+    firebaseDb.ref("laligaBrains/economy/state/deferredCredits").get(),
+  ]);
   return json(200, {
     adminUid: user.uid,
     users: people,
@@ -76,5 +80,7 @@ export const handler: Handler = async (event) => run(async () => {
     fantasyPlayers: fantasyPlayersWithOwners,
     fantasyOffers: fantasyOffersWithNames,
     enhancedSecurity: Boolean((settings.val() as { enhancedSecurity?: boolean } | null)?.enhancedSecurity),
+    economyPaused: Boolean(economyPaused.val()),
+    deferredCreditsCount: Object.keys((deferredCredits.val() ?? {}) as Record<string, unknown>).length,
   });
 });

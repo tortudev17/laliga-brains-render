@@ -16,7 +16,7 @@ export function bodyOf(event: HandlerEvent): Record<string, unknown> {
 export function errorResponse(error: unknown): HandlerResponse {
   const status = typeof error === "object" && error && "statusCode" in error ? Number(error.statusCode) : 500;
   const message = status < 500 && error instanceof Error ? error.message : "No se pudo completar la operación. Inténtalo de nuevo más tarde.";
-  if (status >= 500) console.error("Error del backend Render:", error);
+  if (status >= 500) console.error("Error de Cloudflare Function:", error);
   return json(status, { error: message });
 }
 

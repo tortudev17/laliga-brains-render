@@ -3,7 +3,7 @@ import type { Handler } from "../lib/runtime-types";
 import { firebaseDb } from "../lib/firebase-rest";
 import { requireUser } from "../lib/authentication";
 import { applyWalletDelta, mutateEconomy, type EconomyState } from "../lib/economy";
-import { fantasyRosterLimit, purchaseFantasySlot, withdrawFantasyInvestment } from "../lib/economy-core";
+import { fantasyRosterLimit, withdrawFantasyInvestment } from "../lib/economy-core";
 import { asBadRequest, asForbidden, json, run, bodyOf, methodNotAllowed } from "../lib/http";
 
 function idempotency(body: Record<string, unknown>) {
@@ -74,7 +74,7 @@ export const handler: Handler = async (event) => run(async () => {
       recipientUsername: userLabel(String(offer.recipientUid ?? "")).username,
     }));
     const rosterLimit = vals ? fantasyRosterLimit(vals, uid) : 5;
-    return json(200, { players: playersWithOwner, roster, offers: offersWithNames, extraSlots: rosterLimit - 5, rosterLimit });
+    return json(200, { players: playersWithOwner, roster, offers: offersWithNames, rosterLimit });
   }
   if (event.httpMethod !== "POST") return methodNotAllowed(["GET", "POST"]);
   const body = bodyOf(event);
@@ -88,8 +88,7 @@ export const handler: Handler = async (event) => run(async () => {
     const player = state.fantasyPlayers[playerId];
     if (player?.archived === true) throw Object.assign(new Error("Este jugador ya no está disponible en el mercado."), { statusCode: 409 });
     const rosterCount = (managerUid = uid) => Object.values(state.fantasyPlayers).filter((item) => item.ownerUid === managerUid && item.archived !== true).length;
-    const ensureSlot = (managerUid = uid) => { if (rosterCount(managerUid) >= fantasyRosterLimit(state, managerUid)) throw Object.assign(new Error("Tu plantilla está completa. Amplíala para poder fichar otro jugador."), { statusCode: 409 }); };
-    if (action === "buySquadSlot") return purchaseFantasySlot(state, uid, key);
+    const ensureSlot = (managerUid = uid) => { if (rosterCount(managerUid) >= fantasyRosterLimit(state, managerUid)) throw Object.assign(new Error("Tu plantilla está completa. El límite es de cinco jugadores."), { statusCode: 409 }); };
     if (action === "buy") {
       if (!player || player.ownerUid) throw Object.assign(new Error("Este jugador ya no está disponible."), { statusCode: 409 });
       ensureSlot();

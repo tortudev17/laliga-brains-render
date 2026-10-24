@@ -9,10 +9,9 @@ export const handler: Handler = async (event) => run(async () => {
   const uid = event.queryStringParameters?.id ?? "";
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(uid)) return json(400, { error: "Perfil no válido." });
 
-  const [profileSnapshot, playersSnapshot, slotSnapshot] = await Promise.all([
+  const [profileSnapshot, playersSnapshot] = await Promise.all([
     firebaseDb.ref(`laligaBrains/identity/users/${uid}`).get(),
     firebaseDb.ref("laligaBrains/economy/state/fantasyPlayers").get(),
-    firebaseDb.ref(`laligaBrains/economy/state/fantasyExtraSlots/${uid}`).get(),
   ]);
   const profile = profileSnapshot.val() as { username?: string; displayName?: string; nickname?: string; photoPath?: string; role?: string; accountStatus?: string } | null;
   if (!profile || profile.accountStatus !== "active") return json(404, { error: "No se encontró este perfil." });
@@ -22,8 +21,7 @@ export const handler: Handler = async (event) => run(async () => {
     .map(([id, player]) => ({ id, name: String(player.name ?? "Jugador"), value: Number(player.value ?? 50) }))
     .sort((a, b) => a.name.localeCompare(b.name, "es-ES"));
   const fantasyAssetValue = players.reduce((total, player) => total + (Number.isSafeInteger(player.value) && player.value > 0 ? player.value : 0), 0);
-  const storedExtraSlots = Number(slotSnapshot.val() ?? 0);
-  const rosterLimit = 5 + (Number.isSafeInteger(storedExtraSlots) ? Math.max(0, storedExtraSlots) : 0);
+  const rosterLimit = 5;
 
   return json(200, {
     profile: {

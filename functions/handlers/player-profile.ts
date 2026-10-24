@@ -15,8 +15,9 @@ export const handler: Handler = async (event) => run(async () => {
     firebaseDb.ref("laligaBrains/football/goalLeaderboard").orderByChild("totalGoals").limitToLast(50).get(),
   ]);
   if (!profileSnapshot.exists()) return json(404, { error: "No se encontró el perfil del jugador." });
-  const profile = profileSnapshot.val() as { name?: string; uid?: string; team?: string; ghost?: boolean };
-  const stats = statsSnapshot.val() as { totalGoals?: number; goalsByMatch?: Record<string, number> } | null;
+  const profile = profileSnapshot.val() as { name?: string; uid?: string; team?: string; ghost?: boolean; unknown?: boolean; archived?: boolean };
+  if (profile.archived) return json(404, { error: "No se encontró el perfil del jugador." });
+  const stats = statsSnapshot.val() as { totalGoals?: number; manualGoals?: number; goalsByMatch?: Record<string, number> } | null;
   const fantasy = fantasySnapshot.val() as { value?: number; ownerUid?: string; permanentInvestment?: number; performanceValue?: number } | null;
   const entries = Object.entries(stats?.goalsByMatch ?? {}).slice(-30).reverse();
   const matches = await Promise.all(entries.map(async ([matchId, goals]) => {
@@ -32,7 +33,7 @@ export const handler: Handler = async (event) => run(async () => {
     if (owner?.accountStatus === "active") ownerName = owner.displayName ?? owner.username ?? null;
   }
   return json(200, {
-    player: { id: playerId, name: profile.name ?? "Jugador", ghost: Boolean(profile.ghost), team: profile.team ?? "4ESO", totalGoals: Number(stats?.totalGoals ?? 0), rank: goalRank < 0 ? null : goalRank + 1,
+    player: { id: playerId, name: profile.name ?? "Jugador", ghost: Boolean(profile.ghost), unknown: Boolean(profile.unknown), team: profile.team ?? "4ESO", totalGoals: Number(stats?.totalGoals ?? 0), manualGoals: Number(stats?.manualGoals ?? 0), rank: goalRank < 0 ? null : goalRank + 1,
       fantasy: fantasy ? { value: Number(fantasy.value ?? 50), permanentInvestment: Number(fantasy.permanentInvestment ?? 0), performanceValue: Number(fantasy.performanceValue ?? 50), ownerName } : null,
       matchContributions: matches.filter((match): match is NonNullable<typeof match> => Boolean(match)).sort((a, b) => b.playedAt - a.playedAt),
     },

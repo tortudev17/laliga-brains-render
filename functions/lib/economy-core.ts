@@ -13,37 +13,22 @@ export interface EconomyState {
   predictionRounds: Record<string, Record<string, unknown>>;
   predictionEntries: Record<string, Record<string, unknown>>;
   predictionCorrect: Record<string, number>;
-  fantasyExtraSlots: Record<string, number>;
+  quizSessions: Record<string, Record<string, unknown>>;
+  /** When paused, debits are rejected and new credits wait here until resume. */
+  economyPaused?: boolean;
+  deferredCredits?: Record<string, { walletUid: string; amount: number; type: string; actorUid: string | null; idempotencyKey: string; relatedEntityId?: string; createdAt: number }>;
+  /** Legacy field retained only so old records deserialize; roster limits ignore it. */
+  fantasyExtraSlots?: Record<string, number>;
   predictionEconomyRetired?: boolean;
   operations: Record<string, Record<string, unknown>>;
 }
 
 export function emptyEconomy(): EconomyState {
-  return { wallets: {}, ledger: {}, idempotency: {}, fantasyPlayers: {}, fantasyExtraSlots: {}, valuationHistory: {}, ownershipHistory: {}, offers: {}, promotions: {}, dailyPosts: {}, predictionRounds: {}, predictionEntries: {}, predictionCorrect: {}, operations: {} };
+  return { wallets: {}, ledger: {}, idempotency: {}, fantasyPlayers: {}, valuationHistory: {}, ownershipHistory: {}, offers: {}, promotions: {}, dailyPosts: {}, predictionRounds: {}, predictionEntries: {}, predictionCorrect: {}, quizSessions: {}, deferredCredits: {}, economyPaused: false, operations: {} };
 }
 
-export function nextFantasySlotPrice(purchasedExtraSlots: number) {
-  const count = Number.isSafeInteger(purchasedExtraSlots) ? Math.max(0, purchasedExtraSlots) : 0;
-  return count === 0 ? 500 : count === 1 ? 5000 : 50000;
-}
-
-export function fantasyRosterLimit(state: EconomyState, uid: string) {
-  const purchased = Number(state.fantasyExtraSlots?.[uid] ?? 0);
-  return 5 + (Number.isSafeInteger(purchased) ? Math.max(0, purchased) : 0);
-}
-
-export function purchaseFantasySlot(state: EconomyState, uid: string, idempotencyKey: string) {
-  const existing = state.idempotency[idempotencyKey];
-  if (existing) return existing.result as { extraSlots: number; rosterLimit: number; price: number; balance: number };
-  const previousCount = Number(state.fantasyExtraSlots?.[uid] ?? 0);
-  const extraSlots = Number.isSafeInteger(previousCount) && previousCount >= 0 ? previousCount : 0;
-  const price = nextFantasySlotPrice(extraSlots);
-  const wallet = applyWalletDelta(state, uid, -price, "fantasy_roster_slot", uid, idempotencyKey);
-  const updatedExtraSlots = extraSlots + 1;
-  state.fantasyExtraSlots[uid] = updatedExtraSlots;
-  const result = { extraSlots: updatedExtraSlots, rosterLimit: 5 + updatedExtraSlots, price, balance: wallet.balance };
-  state.idempotency[idempotencyKey] = { result };
-  return result;
+export function fantasyRosterLimit(_state: EconomyState, _uid: string) {
+  return 5;
 }
 
 export function calculateFantasyAssetValue(state: EconomyState, uid: string) {
@@ -84,10 +69,21 @@ export function withdrawFantasyInvestment(state: EconomyState, uid: string, play
   return result;
 }
 
-export function applyWalletDelta(state: EconomyState, walletUid: string, amount: number, type: string, actorUid: string | null, idempotencyKey: string, relatedEntityId?: string, allowDebt = false) {
+export interface WalletDeltaResult { balance: number; transactionId: string; deferred?: boolean }
+
+export function applyWalletDelta(state: EconomyState, walletUid: string, amount: number, type: string, actorUid: string | null, idempotencyKey: string, relatedEntityId?: string, allowDebt = false, bypassPause = false, deferWhilePaused = false): WalletDeltaResult {
   if (!Number.isSafeInteger(amount) || amount === 0) throw Object.assign(new Error("El importe debe ser un número entero distinto de cero."), { statusCode: 400 });
   const existing = state.idempotency[idempotencyKey];
-  if (existing) return existing.result as { balance: number; transactionId: string };
+  if (existing) return existing.result as WalletDeltaResult;
+  state.deferredCredits ??= {};
+  const alreadyDeferred = state.deferredCredits[idempotencyKey];
+  if (alreadyDeferred && !bypassPause) return { balance: state.wallets[walletUid] ?? 0, transactionId: `pendiente:${idempotencyKey}`, deferred: true };
+  if (alreadyDeferred && bypassPause) delete state.deferredCredits[idempotencyKey];
+  if (state.economyPaused && !bypassPause) {
+    if (amount < 0 || !deferWhilePaused) throw Object.assign(new Error("La economía está pausada: no se pueden realizar operaciones con monedas ahora."), { statusCode: 423 });
+    state.deferredCredits[idempotencyKey] = { walletUid, amount, type, actorUid, idempotencyKey, ...(relatedEntityId ? { relatedEntityId } : {}), createdAt: Date.now() };
+    return { balance: state.wallets[walletUid] ?? 0, transactionId: `pendiente:${idempotencyKey}`, deferred: true };
+  }
   const balance = state.wallets[walletUid] ?? 0;
   if (amount < 0 && !allowDebt && balance < Math.abs(amount)) throw Object.assign(new Error(`Saldo insuficiente: se necesitan ${Math.abs(amount)} monedas y hay ${balance}.`), { statusCode: 409 });
   const balanceAfter = balance + amount;
@@ -95,9 +91,25 @@ export function applyWalletDelta(state: EconomyState, walletUid: string, amount:
   state.wallets[walletUid] = balanceAfter;
   state.ledger[walletUid] ??= {};
   state.ledger[walletUid][transactionId] = { id: transactionId, walletUid, actorUid, amount, type, relatedEntityId, idempotencyKey, balanceAfter, createdAt: Date.now() };
-  const result = { balance: balanceAfter, transactionId };
+  const result = { balance: balanceAfter, transactionId, deferred: false };
   state.idempotency[idempotencyKey] = { result };
   return result;
+}
+
+/** Resume all queued rewards atomically with the pause flag and wallet ledger. */
+export function setEconomyPaused(state: EconomyState, paused: boolean, actorUid: string) {
+  state.deferredCredits ??= {};
+  if (paused) {
+    state.economyPaused = true;
+    return { paused: true, releasedCredits: 0 };
+  }
+  state.economyPaused = false;
+  const queued = Object.values(state.deferredCredits).sort((a, b) => a.createdAt - b.createdAt);
+  for (const credit of queued) {
+    applyWalletDelta(state, credit.walletUid, credit.amount, credit.type, credit.actorUid ?? actorUid, credit.idempotencyKey, credit.relatedEntityId, false, true);
+    delete state.deferredCredits[credit.idempotencyKey];
+  }
+  return { paused: false, releasedCredits: queued.length };
 }
 
 export function retirePredictionEconomyState(state: EconomyState) {
@@ -126,6 +138,7 @@ export function retirePredictionEconomyState(state: EconomyState) {
       null,
       `prediction-economy-retired-v1:${uid}`,
       "prediction-economy-retirement",
+      true,
       true,
     );
     adjustedAccounts += 1;

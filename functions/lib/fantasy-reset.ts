@@ -42,7 +42,7 @@ export function retireFantasyPlayerState(
     throw Object.assign(new Error("El valor del jugador no es válido; no se ha retirado."), { statusCode: 409 });
   }
   if (previousOwnerUid && refundAmount > 0) {
-    applyWalletDelta(state, previousOwnerUid, refundAmount, "piero_player_retirement", actorUid, operationKey, playerId, true);
+    applyWalletDelta(state, previousOwnerUid, refundAmount, "piero_player_retirement", actorUid, operationKey, playerId, true, true);
   }
   if (player) {
     player.ownerUid = null;
@@ -98,6 +98,7 @@ export function resetFantasyEconomyState(
         actorUid,
         `${operationKey}:wallet:${uid}`,
         resetId,
+        true,
         true,
       );
     }

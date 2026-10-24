@@ -17,7 +17,7 @@ const PlayerProfilePage = lazy(() => import("../pages/PlayerProfilePage").then((
 
 const navigation = [
   ["/", "Inicio"], ["/partidos", "Partidos"], ["/goleadores", "Goleadores"],
-  ["/fantasy", "Fantasy"],
+  ["/fantasy", "Fantasy"], ["/pronosticos", "Pronósticos"], ["/quiz", "Quiz"],
   ["/clasificaciones", "Clasificaciones"], ["/perfil", "Perfil"],
 ] as const;
 

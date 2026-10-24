@@ -11,6 +11,7 @@ import { handler as notificationsAction } from "../handlers/notifications-action
 import { handler as penaltyAction } from "../handlers/penalty-action";
 import { handler as playerProfile } from "../handlers/player-profile";
 import { handler as predictionAction } from "../handlers/prediction-action";
+import { handler as quizAction } from "../handlers/quiz-action";
 import { handler as profileAction } from "../handlers/profile-action";
 import { handler as promotionAction } from "../handlers/promotion-action";
 import { handler as recoverAccount } from "../handlers/recover-account";
@@ -37,6 +38,7 @@ const routes: Record<string, Handler> = {
   "penalty-action": penaltyAction,
   "player-profile": playerProfile,
   "prediction-action": predictionAction,
+  "quiz-action": quizAction,
   "profile-action": profileAction,
   "promotion-action": promotionAction,
   "recover-account": recoverAccount,

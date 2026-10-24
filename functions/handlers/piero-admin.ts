@@ -2,12 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Handler } from "../lib/runtime-types";
 import { firebaseDb } from "../lib/firebase-rest";
 import { requirePiero } from "../lib/authentication";
-import { applyWalletDelta, mutateEconomy, REGISTRATION_BONUS, type EconomyState } from "../lib/economy";
+import { applyWalletDelta, mutateEconomy, REGISTRATION_BONUS, setEconomyPaused, type EconomyState } from "../lib/economy";
 import { resetFantasyEconomyState, retireFantasyPlayerState } from "../lib/fantasy-reset";
+import { closeAccountEconomy } from "../lib/account-deletion";
+import { mergePlayerEconomyIdentity } from "../lib/player-identity-merge";
 import { cancelSettledRound, settleRound, type MatchTarget } from "../lib/predictions";
 import { asBadRequest, json, run, bodyOf, methodNotAllowed } from "../lib/http";
 import { currentMatchForProjection, mergeMissingMatchRows, normalizeMatchRewards } from "../lib/match-action";
-import { ghostArchiveBlockReason } from "../lib/ghost-player";
+import { accountPlayerMergeBlockReason, ghostArchiveBlockReason, remapDeletedGhostGoals } from "../lib/ghost-player";
 import { calculatePlayerGoalStats } from "../../src/utils/football";
 import type { ManualGoalAdjustment, MatchRecord, TeamId, TeamStats } from "../../src/types/domain";
 
@@ -76,8 +78,10 @@ export const handler: Handler = async (event) => run(async () => {
   else if (action === "adjustPlayerGoals") result = await adjustPlayerGoals(body, user.uid);
   else if (action === "mergePlayer") result = await mergePlayer(body, user.uid);
   else if (action === "coinAdjust") result = await adjustCoins(body, user.uid);
+  else if (action === "setEconomyPaused") result = await pauseEconomy(body, user.uid);
   else if (action === "setEnhancedSecurity") result = await setEnhancedSecurity(body, user.uid);
   else if (action === "approveUser" || action === "rejectUser") result = await decideRegistration(action, body, user.uid);
+  else if (action === "deleteUser") result = await deleteUserAccount(body, user.uid);
   else if (action === "resetPassword") result = await resetPassword(body, user.uid);
   else if (action === "changeRole") result = await changeRole(body, user.uid);
   else if (action === "setPostingSuspension" || action === "setCommentSuspension" || action === "banUser" || action === "suspendUser") result = await moderateUser(action, body, user.uid);
@@ -238,7 +242,7 @@ async function processMatchAction(key: string) {
     if ((await publicMatchRef.get()).exists()) throw new Error("Firebase no confirmó la eliminación del partido.");
   }
   for (const reward of rewards) {
-    await mutateEconomy((economy: EconomyState) => applyWalletDelta(economy, reward.uid, reward.amount, "fantasy_goal_adjustment", operation.actorUid, reward.idempotencyKey, matchId, reward.amount < 0));
+    await mutateEconomy((economy: EconomyState) => applyWalletDelta(economy, reward.uid, reward.amount, "fantasy_goal_adjustment", operation.actorUid, reward.idempotencyKey, matchId, reward.amount < 0, reward.amount < 0, reward.amount > 0));
     await firebaseDb.ref(`laligaBrains/football/pendingRewards/${reward.id}`).remove();
   }
   await recalculateMarketValues(Object.values(matches), goalStats, key);
@@ -592,10 +596,58 @@ async function permanentlyDeleteGhostPlayer(body: Record<string, unknown>, actor
       throw Object.assign(new Error("Resuelve las ofertas pendientes antes de eliminar el perfil."), { statusCode: 409 });
     }
     delete state.fantasyPlayers[playerId];
+    delete state.valuationHistory[playerId];
     return true;
   });
+  await remapPlayerGoalHistory(playerId, UNKNOWN_4ESO_PLAYER_ID, UNKNOWN_4ESO_PLAYER_NAME, actorUid, "delete-ghost");
   await removeGhostPlayerRecords(playerId);
   return { playerId, deleted: true, alreadyDeleted: false };
+}
+
+async function remapPlayerGoalHistory(sourcePlayerId: string, targetPlayerId: string, targetPlayerName: string, actorUid: string, operation: string) {
+  if (targetPlayerId === UNKNOWN_4ESO_PLAYER_ID) await ensureUnknownPlayerProfile();
+  const stateRef = firebaseDb.ref("laligaBrains/football/state");
+  let movedGoals = 0;
+  let affectedMatchIds: string[] = [];
+  const tx = await stateRef.transaction((raw) => {
+    const state = { matches: {}, actions: {}, audit: {}, manualGoalAdjustments: {}, ...(raw ?? {}) } as FootballState;
+    affectedMatchIds = Object.values(state.matches ?? {}).filter((match) => Number(match.goalscorers4ESO?.[sourcePlayerId] ?? 0) > 0).map((match) => match.id);
+    const result = remapDeletedGhostGoals(
+      Object.values(state.matches ?? {}),
+      Object.values(state.manualGoalAdjustments ?? {}),
+      sourcePlayerId,
+      targetPlayerId,
+      targetPlayerName,
+    );
+    movedGoals = result.goalsMoved;
+    state.matches = Object.fromEntries(result.matches.map((match) => [match.id, match as StoredMatch]));
+    state.manualGoalAdjustments = Object.fromEntries(result.adjustments.map((item) => [item.id, item as ManualGoalAdjustment]));
+    const auditId = `${operation}:${sourcePlayerId}:${targetPlayerId}`;
+    state.audit[auditId] ??= { action: operation, actorUid, sourcePlayerId, targetPlayerId, movedGoals, createdAt: Date.now(), historyPreservedAs: targetPlayerId };
+    return state;
+  }, undefined, false);
+  if (!tx.committed) throw Object.assign(new Error("No se pudo conservar el historial de goles del jugador."), { statusCode: 409 });
+  const state = tx.snapshot.val() as FootballState;
+  const matches = Object.values(state.matches ?? {});
+  const goalStats = calculatePlayerGoalStats(matches, Object.values(state.manualGoalAdjustments ?? {}));
+  const stats = calculateTeamStats(matches);
+  const profiles = (await firebaseDb.ref("laligaBrains/identity/playerProfiles").get()).val() as Record<string, Record<string, unknown>> | null;
+  const playerStats = Object.fromEntries(Object.entries(goalStats).map(([id, info]) => [id, { ...(profiles?.[id] ?? {}), ...info }]));
+  const leaderboard = Object.fromEntries(Object.entries(goalStats).map(([id, info]) => [id, { totalGoals: info.totalGoals }]));
+  const updates: Record<string, unknown> = {
+    "laligaBrains/football/teamStats": stats,
+    "laligaBrains/football/playerStats": playerStats,
+    "laligaBrains/football/goalLeaderboard": leaderboard,
+  };
+  for (const id of affectedMatchIds) if (state.matches[id]) updates[`laligaBrains/football/matches/${id}`] = state.matches[id];
+  await firebaseDb.ref().update(updates);
+  await recalculateMarketValues(matches, goalStats, `${operation}:${sourcePlayerId}:${targetPlayerId}`);
+  const affectedDates = new Set(affectedMatchIds.map((id) => String(state.matches[id]?.dateKey ?? "")).filter(Boolean));
+  for (const dateKey of affectedDates) {
+    const match = affectedMatchIds.map((id) => state.matches[id]).find((item) => item?.dateKey === dateKey);
+    if (match) await settleRound(dateKey, match as MatchTarget);
+  }
+  return { movedGoals };
 }
 
 async function removeGhostPlayerRecords(playerId: string) {
@@ -681,24 +733,85 @@ async function ensureUnknownPlayerProfile() {
 async function mergePlayer(body: Record<string, unknown>, actorUid: string) {
   const playerId = String(body.playerId ?? "");
   const uid = String(body.uid ?? "");
+  if (!/^[a-zA-Z0-9_-]{3,128}$/.test(playerId) || !/^[a-zA-Z0-9_-]{1,128}$/.test(uid)) throw asBadRequest("Selecciona un perfil fantasma y una cuenta válidos.");
   const [ghostSnapshot, userSnapshot] = await Promise.all([
     firebaseDb.ref(`laligaBrains/identity/playerProfiles/${playerId}`).get(),
     firebaseDb.ref(`laligaBrains/identity/users/${uid}`).get(),
   ]);
   const ghost = ghostSnapshot.val() as { team?: string; uid?: string; name?: string; ghost?: boolean; archived?: boolean } | null;
-  const user = userSnapshot.val() as { role?: string; playerId?: string } | null;
-  if (!ghost?.ghost || ghost.team !== "4ESO" || ghost.archived || user?.role !== "player_4eso") throw asBadRequest("El perfil y la cuenta no se pueden combinar.");
-  if (user.playerId && user.playerId !== playerId) throw Object.assign(new Error("La cuenta ya está asociada a otro perfil de jugador."), { statusCode: 409 });
+  const user = userSnapshot.val() as { role?: string; playerId?: string; accountStatus?: string } | null;
+  if (ghost?.uid === uid && ghost.ghost === false && user?.playerId === playerId) return { playerId, uid, merged: true, duplicate: true, goalsPreserved: true };
+  if (!ghost?.ghost || ghost.team !== "4ESO" || ghost.archived || user?.role !== "player_4eso" || user.accountStatus !== "active") throw asBadRequest("El perfil fantasma y la cuenta activa de 4 ESO no se pueden combinar.");
+  if (ghost.uid && ghost.uid !== uid) throw Object.assign(new Error("Este jugador fantasma ya está asociado a otra cuenta."), { statusCode: 409 });
+
+  const sourcePlayerId = String(user.playerId ?? "");
+  const [sourceSnapshot, footballSnapshot, economySnapshot] = sourcePlayerId && sourcePlayerId !== playerId
+    ? await Promise.all([
+      firebaseDb.ref(`laligaBrains/identity/playerProfiles/${sourcePlayerId}`).get(),
+      firebaseDb.ref("laligaBrains/football/state").get(),
+      firebaseDb.ref("laligaBrains/economy/state").get(),
+    ])
+    : [null, null, null];
+  const sourceProfile = sourceSnapshot?.val() as { uid?: string; team?: string; ghost?: boolean } | null;
+  const football = footballSnapshot?.val() as FootballState | null;
+  const economy = economySnapshot?.val() as EconomyState | null;
+  const sourceFantasyPlayer = (economy?.fantasyPlayers?.[sourcePlayerId] ?? null) as { ownerUid?: string | null; permanentInvestment?: number } | null;
+  const targetFantasyPlayer = (economy?.fantasyPlayers?.[playerId] ?? null) as { ownerUid?: string | null; permanentInvestment?: number } | null;
+  const sourceBlock = accountPlayerMergeBlockReason({
+    accountUid: uid,
+    sourcePlayerId,
+    targetPlayerId: playerId,
+    sourceProfile,
+    sourceFantasyPlayer,
+    targetFantasyPlayer,
+    matches: Object.values(football?.matches ?? {}),
+    manualAdjustments: Object.values(football?.manualGoalAdjustments ?? {}),
+    offers: Object.values(economy?.offers ?? {}) as Array<{ playerId: string; status: string }>,
+  });
+  if (sourceBlock) throw Object.assign(new Error(sourceBlock), { statusCode: 409 });
+
+  // Retire the auto-created account profile, then move its match and manual
+  // goal history onto the ghost under one football-state transaction.
+  if (sourcePlayerId && sourcePlayerId !== playerId) {
+    const now = Date.now();
+    await firebaseDb.ref().update({
+      [`laligaBrains/identity/playerProfiles/${sourcePlayerId}/archived`]: true,
+      [`laligaBrains/identity/playerProfiles/${sourcePlayerId}/archivedAt`]: now,
+      [`laligaBrains/identity/playerProfiles/${sourcePlayerId}/archivedBy`]: actorUid,
+      [`laligaBrains/identity/ghostPlayers/${sourcePlayerId}/archived`]: true,
+    });
+    const footballRef = firebaseDb.ref("laligaBrains/football/state");
+    const archived = await footballRef.transaction((raw) => {
+      const state = { matches: {}, actions: {}, audit: {}, manualGoalAdjustments: {}, ...(raw ?? {}) } as FootballState;
+      state.archivedPlayers ??= {};
+      state.archivedPlayers[sourcePlayerId] ??= { archivedAt: now, archivedBy: actorUid };
+      return state;
+    }, undefined, false);
+    if (!archived.committed) throw Object.assign(new Error("No se pudo preparar el perfil para combinarlo."), { statusCode: 409 });
+    await remapPlayerGoalHistory(sourcePlayerId, playerId, String(ghost.name ?? "Jugador"), actorUid, "merge-player");
+  }
+
+  await mutateEconomy((state) => {
+    return mergePlayerEconomyIdentity(state, sourcePlayerId && sourcePlayerId !== playerId ? sourcePlayerId : playerId, playerId, uid);
+  });
+
   const updates: Record<string, unknown> = {
     [`laligaBrains/identity/playerProfiles/${playerId}/uid`]: uid,
     [`laligaBrains/identity/playerProfiles/${playerId}/ghost`]: false,
     [`laligaBrains/identity/playerProfiles/${playerId}/mergedAt`]: Date.now(),
     [`laligaBrains/identity/playerProfiles/${playerId}/mergedBy`]: actorUid,
     [`laligaBrains/identity/users/${uid}/playerId`]: playerId,
+    [`laligaBrains/identity/ghostPlayers/${playerId}`]: null,
   };
+  if (sourcePlayerId && sourcePlayerId !== playerId) {
+    updates[`laligaBrains/identity/playerProfiles/${sourcePlayerId}`] = null;
+    updates[`laligaBrains/identity/ghostPlayers/${sourcePlayerId}`] = null;
+    updates[`laligaBrains/football/playerStats/${sourcePlayerId}`] = null;
+    updates[`laligaBrains/football/goalLeaderboard/${sourcePlayerId}`] = null;
+    updates[`laligaBrains/football/state/archivedPlayers/${sourcePlayerId}`] = null;
+  }
   await firebaseDb.ref().update(updates);
-  await mutateEconomy((state) => { if (state.fantasyPlayers[playerId]) { state.fantasyPlayers[playerId]!.ghost = false; state.fantasyPlayers[playerId]!.uid = uid; } return true; });
-  return { playerId, uid };
+  return { playerId, uid, merged: true, duplicate: false, goalsPreserved: true };
 }
 
 async function recalculateMarketValues(matches: MatchRecord[], goalStats: ReturnType<typeof calculatePlayerGoalStats>, revisionKey: string) {
@@ -730,11 +843,16 @@ async function adjustCoins(body: Record<string, unknown>, actorUid: string) {
   if (!uid || !Number.isSafeInteger(amount) || amount === 0 || !reason || reason.length > 300) throw asBadRequest("Indica usuario, importe entero y motivo.");
   const result = await mutateEconomy((state) => {
     const previousBalance = state.wallets[uid] ?? 0;
-    const adjustment = applyWalletDelta(state, uid, amount, "piero_adjustment", actorUid, `piero-adjust:${randomUUID()}`, undefined, true);
+    const adjustment = applyWalletDelta(state, uid, amount, "piero_adjustment", actorUid, `piero-adjust:${randomUUID()}`, undefined, true, true);
     return { ...adjustment, previousBalance, updatedBalance: adjustment.balance };
   });
   await firebaseDb.ref("laligaBrains/administration/coinAdjustments").push({ actorUid, uid, amount, reason, previousBalance: result.previousBalance, updatedBalance: result.updatedBalance, createdAt: Date.now() });
   return result;
+}
+
+async function pauseEconomy(body: Record<string, unknown>, actorUid: string) {
+  if (typeof body.paused !== "boolean") throw asBadRequest("Indica si quieres pausar o reanudar la economía.");
+  return mutateEconomy((state) => ({ ...setEconomyPaused(state, body.paused as boolean, actorUid), updatedBy: actorUid, updatedAt: Date.now() }));
 }
 
 async function setEnhancedSecurity(body: Record<string, unknown>, actorUid: string) {
@@ -753,7 +871,7 @@ async function decideRegistration(action: string, body: Record<string, unknown>,
   await firebaseDb.ref(`laligaBrains/identity/registrationApprovals/${uid}`).update({ status: approve ? "approved" : "rejected", reviewedAt: Date.now(), reviewedBy: actorUid });
   if (approve) {
     if (profile.role === "player_4eso") await ensureRegisteredPlayer(uid, profile.username ?? "Jugador");
-    await mutateEconomy((state) => applyWalletDelta(state, uid, REGISTRATION_BONUS, "registration_bonus", null, `registration:${uid}`));
+    await mutateEconomy((state) => applyWalletDelta(state, uid, REGISTRATION_BONUS, "registration_bonus", null, `registration:${uid}`, undefined, false, false, true));
     await firebaseDb.ref(`laligaBrains/notifications/${uid}`).push({ type: "account_approved", read: false, createdAt: Date.now() });
   }
   return { uid, status: approve ? "active" : "rejected" };
@@ -770,11 +888,60 @@ async function changeRole(body: Record<string, unknown>, actorUid: string) {
   const role = String(body.role ?? "");
   if (!uid || !["player_3eso", "player_4eso", "spectator"].includes(role)) throw asBadRequest("La clasificación de usuario no es válida.");
   const userRef = firebaseDb.ref(`laligaBrains/identity/users/${uid}`);
-  const user = (await userRef.get()).val() as { playerId?: string; username?: string } | null;
+  const user = (await userRef.get()).val() as { playerId?: string; username?: string; accountStatus?: string } | null;
   if (!user) throw asBadRequest("No se encontró la cuenta.");
+  if (user.accountStatus === "deleted") throw Object.assign(new Error("La cuenta ya está eliminada de LaLiga Brains."), { statusCode: 409 });
   await userRef.update({ role, updatedAt: Date.now(), updatedBy: actorUid });
   if (role === "player_4eso") await ensureRegisteredPlayer(uid, user.username ?? "Jugador", user.playerId);
   return { uid, role };
+}
+
+async function deleteUserAccount(body: Record<string, unknown>, actorUid: string) {
+  const uid = String(body.uid ?? "");
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(uid) || uid === actorUid) throw asBadRequest("No se puede eliminar esa cuenta.");
+  const userRef = firebaseDb.ref(`laligaBrains/identity/users/${uid}`);
+  const user = (await userRef.get()).val() as { username?: string; displayName?: string; role?: string; accountStatus?: string; playerId?: string } | null;
+  if (!user) throw Object.assign(new Error("No se encontró la cuenta."), { statusCode: 404 });
+  if (String(user.username ?? "").toLowerCase() === "piero") throw asBadRequest("La cuenta de Piero no se puede eliminar desde este panel.");
+
+  const now = Date.now();
+  const playerId = String(user.playerId ?? "");
+  const playerRef = playerId ? firebaseDb.ref(`laligaBrains/identity/playerProfiles/${playerId}`) : null;
+  const playerProfile = playerRef ? (await playerRef.get()).val() as Record<string, unknown> | null : null;
+  await mutateEconomy((state) => {
+    const closed = closeAccountEconomy(state, uid, actorUid, now);
+    const player = playerId ? state.fantasyPlayers[playerId] : undefined;
+    if (player?.uid === uid) {
+      player.uid = null;
+      player.ghost = true;
+      player.updatedAt = now;
+    }
+    return closed;
+  });
+
+  if (playerRef && ((playerProfile?.uid === uid) || (!playerProfile && user.role === "player_4eso"))) {
+    const detached = playerProfile
+      ? { ...playerProfile, uid: null, ghost: true, accountDeletedAt: now }
+      : { id: playerId, uid: null, name: String(user.displayName ?? user.username ?? "Jugador"), team: "4ESO", ghost: true, createdAt: now, accountDeletedAt: now };
+    await firebaseDb.ref().update({
+      [`laligaBrains/identity/playerProfiles/${playerId}`]: detached,
+      [`laligaBrains/identity/ghostPlayers/${playerId}`]: detached,
+      [`laligaBrains/football/playerStats/${playerId}/uid`]: null,
+      [`laligaBrains/football/playerStats/${playerId}/ghost`]: true,
+    });
+  }
+  await hideUserSocialContent(uid, actorUid);
+  await firebaseDb.ref().update({
+    [`laligaBrains/identity/users/${uid}/accountStatus`]: "deleted",
+    [`laligaBrains/identity/users/${uid}/deletedAt`]: now,
+    [`laligaBrains/identity/users/${uid}/deletedBy`]: actorUid,
+    [`laligaBrains/identity/users/${uid}/displayName`]: null,
+    [`laligaBrains/identity/users/${uid}/nickname`]: null,
+    [`laligaBrains/identity/users/${uid}/photoURL`]: null,
+    [`laligaBrains/identity/users/${uid}/photoPath`]: null,
+    [`laligaBrains/identity/registrationApprovals/${uid}/status`]: "deleted",
+  });
+  return { uid, deleted: true, footballHistoryPreserved: Boolean(playerRef && (playerProfile?.uid === uid || user.role === "player_4eso")), deletedFromApplicationAt: now, authenticationCredentialRemoved: false };
 }
 
 async function moderateUser(action: string, body: Record<string, unknown>, actorUid: string) {
@@ -782,6 +949,9 @@ async function moderateUser(action: string, body: Record<string, unknown>, actor
   if (!uid || uid === actorUid) throw asBadRequest("No se puede aplicar esta acción a esa cuenta.");
   const userRef = firebaseDb.ref(`laligaBrains/identity/users/${uid}`);
   const now = Date.now();
+  const currentUser = (await userRef.get()).val() as { accountStatus?: string } | null;
+  if (!currentUser) throw Object.assign(new Error("No se encontró la cuenta."), { statusCode: 404 });
+  if (currentUser.accountStatus === "deleted") throw Object.assign(new Error("La cuenta está eliminada y no se puede reactivar desde moderación."), { statusCode: 409 });
   if (action === "banUser") {
     const user = (await userRef.get()).val() as { accountStatus?: string } | null;
     if (!user) throw asBadRequest("No se encontró la cuenta.");
@@ -851,7 +1021,9 @@ function auditSummary(action: string, body: Record<string, unknown>) {
   if (action === "coinAdjust") return `Ajuste de ${String(body.amount)} monedas.`;
   if (action === "createMatch" || action === "editMatch") return `Resultado ${String(body.score3ESO)}–${String(body.score4ESO)}.`;
   if (action === "setEnhancedSecurity") return `Seguridad mejorada: ${String(body.enabled)}.`;
+  if (action === "setEconomyPaused") return `Economía ${body.paused === true ? "pausada" : "reanudada"}.`;
   if (action === "retirePlayer") return "Perfil de jugador retirado; se conservan la cuenta y el historial de goles.";
+  if (action === "deleteUser") return "Se cerró el acceso de la cuenta y se conservaron sus registros de auditoría y fútbol.";
   if (action === "resetFantasyEconomy") return "Economía Fantasy reiniciada: saldos a 120, valores a 50 y plantillas liberadas.";
   return "Acción administrativa registrada.";
 }

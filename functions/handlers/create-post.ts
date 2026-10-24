@@ -49,7 +49,7 @@ export const handler: Handler = async (event) => run(async () => {
       if (operation?.status === "pending") {
         const idempotencyKey = `post-rollback:${actionKey}`;
         if ((state.dailyPosts[uid]?.count ?? 0) > 0) state.dailyPosts[uid].count -= 1;
-        if (state.idempotency[`post:${actionKey}`]) applyWalletDelta(state, uid, 5, "social_post_refund", null, idempotencyKey, billing.postId);
+        if (state.idempotency[`post:${actionKey}`]) applyWalletDelta(state, uid, 5, "social_post_refund", null, idempotencyKey, billing.postId, false, false, true);
         operation.status = "rolled_back";
       }
       return true;

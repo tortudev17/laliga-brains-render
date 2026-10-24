@@ -1,6 +1,6 @@
 export type TeamId = "3ESO" | "4ESO";
 export type UserRole = "player_3eso" | "player_4eso" | "spectator";
-export type AccountStatus = "active" | "pending_approval" | "suspended" | "banned";
+export type AccountStatus = "active" | "pending_approval" | "suspended" | "banned" | "deleted";
 
 export interface UserProfile {
   uid: string;

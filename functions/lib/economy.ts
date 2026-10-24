@@ -1,6 +1,6 @@
 import { firebaseDb } from "./firebase-rest";
 import { applyWalletDelta, calculateFantasyAssetValue, calculateNetWorth, emptyEconomy, type EconomyState } from "./economy-core";
-export { applyWalletDelta, emptyEconomy } from "./economy-core";
+export { applyWalletDelta, emptyEconomy, setEconomyPaused } from "./economy-core";
 export type { EconomyState } from "./economy-core";
 
 export const REGISTRATION_BONUS = 120;
@@ -10,6 +10,8 @@ export async function mutateEconomy<T>(operation: (state: EconomyState) => T): P
   let output: T | undefined;
   const result = await ref.transaction((raw) => {
     const state = { ...emptyEconomy(), ...(raw ?? {}) } as EconomyState;
+    // Purchased roster slots are a retired feature; old records never grant extra capacity.
+    delete state.fantasyExtraSlots;
     output = operation(state);
     return state;
   }, undefined, false);
@@ -46,5 +48,5 @@ async function mirrorEconomy(state: EconomyState) {
 }
 
 export async function createWalletCredit(uid: string, amount: number, type: string, idempotencyKey: string) {
-  return mutateEconomy((state) => applyWalletDelta(state, uid, amount, type, null, idempotencyKey));
+  return mutateEconomy((state) => applyWalletDelta(state, uid, amount, type, null, idempotencyKey, undefined, false, false, true));
 }

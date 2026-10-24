@@ -4,11 +4,15 @@ import { Link } from "react-router-dom";
 import { apiRequest, deleteFirebaseFile, downloadFirebaseFile, firebaseRead, uploadFirebaseFile } from "../services/api/client";
 import { useAuth } from "../app/AuthContext";
 import { FantasyPage } from "./FantasyPage";
+import { PredictionsPage } from "./PredictionsPage";
+import { QuizPage } from "./QuizPage";
 
 export function SectionPage({ title }: { title: string }) {
   if (title === "Penaltis") return <PenaltyPage />;
   if (title === "Social") return <SocialPage />;
   if (title === "Fantasy") return <FantasyPage />;
+  if (title === "Pronósticos") return <PredictionsPage />;
+  if (title === "Quiz") return <QuizPage />;
   if (title === "Goleadores") return <LeaderboardModule title="Máximos goleadores" kind="goalLeaderboard" />;
   if (title === "Clasificaciones") return <LeaderboardsPage />;
   return <section className="feature-page"><div className="page-heading"><div><h1>{title}</h1><p>Información actualizada de LaLiga Brains.</p></div></div><div className="empty-feature"><Trophy size={28}/><h2>Sin datos todavía</h2><p>Cuando haya actividad registrada, aparecerá aquí.</p></div></section>;

@@ -1,16 +1,12 @@
-import { retirePredictionEconomyState } from "./economy-core";
 import { mutateEconomy, type EconomyState } from "./economy";
-export { estimateProbability, createWinnerQuestion } from "./prediction-math";
+import { createPredictionQuestions, type PredictionPlayerSample, type PredictionMatchSample } from "./prediction-math";
+import { isWeekday, madridDateKey, madridHour } from "./time";
+import { firebaseDb } from "./firebase-rest";
+export { estimateProbability, createWinnerQuestion, createPlayerQuestions, createPredictionQuestions } from "./prediction-math";
 
 export type MatchTarget = { id: string; playedAt: number; score3ESO: number; score4ESO: number; goalscorers4ESO: Record<string, number> };
 
-/** Removes all historic prediction stakes and payouts once, recording compensating ledger entries. */
-export function retirePredictionEconomy() {
-  return mutateEconomy((state) => retirePredictionEconomyState(state));
-}
-
 export async function settleRound(dateKey: string, match: MatchTarget) {
-  await retirePredictionEconomy();
   return mutateEconomy((state) => {
     const round = state.predictionRounds[dateKey];
     if (!round || round.status === "refunded" || round.status === "cancelled") return { settled: false, status: round?.status ?? "missing" };
@@ -50,7 +46,6 @@ export async function settleRound(dateKey: string, match: MatchTarget) {
 }
 
 export async function cancelSettledRound(dateKey: string, matchId: string) {
-  await retirePredictionEconomy();
   return mutateEconomy((state) => {
     const round = state.predictionRounds[dateKey];
     if (!round || round.matchId !== matchId || round.status === "refunded" || round.status === "cancelled") return { cancelled: false, status: round?.status ?? "missing" };
@@ -76,7 +71,6 @@ export async function cancelSettledRound(dateKey: string, matchId: string) {
 }
 
 export async function expireOldRounds(todayKey: string) {
-  await retirePredictionEconomy();
   const stateSnapshot = await (await import("./firebase-rest")).firebaseDb.ref("laligaBrains/economy/state").get();
   const before = stateSnapshot.val() as EconomyState | null;
   const dates = Object.keys(before?.predictionRounds ?? {}).filter((key) => key < todayKey);
@@ -103,6 +97,50 @@ export async function expireOldRounds(todayKey: string) {
     await adminMirrorRound(dateKey);
   }
   return results;
+}
+
+/**
+ * Publishes one free-pick round per school day. The hourly scheduler normally
+ * calls this at 08:00 Europe/Madrid; the authenticated page also calls it as a
+ * catch-up if a scheduled invocation was missed. Historical coin stakes are
+ * never used by this free prediction feature.
+ */
+export async function ensureTodaysPredictionRound(now = new Date()) {
+  const dateKey = madridDateKey(now);
+  if (!isWeekday(now) || madridHour(now) >= 15) return { created: false, reason: "outside_window" as const };
+  const existing = await firebaseDb.ref(`laligaBrains/economy/state/predictionRounds/${dateKey}`).get();
+  if (existing.exists()) return { created: false, reason: "already_exists" as const };
+  const closure = await firebaseDb.ref(`laligaBrains/config/schoolCalendar/closedDates/${dateKey}`).get();
+  const closureValue = closure.val() as unknown;
+  if (closureValue === true || (typeof closureValue === "object" && closureValue !== null && (closureValue as { closed?: unknown }).closed === true)) {
+    return { created: false, reason: "school_closed" as const };
+  }
+
+  const [matchesSnapshot, playersSnapshot] = await Promise.all([
+    firebaseDb.ref("laligaBrains/football/matches").orderByChild("playedAt").limitToLast(50).get(),
+    firebaseDb.ref("laligaBrains/identity/playerProfiles").get(),
+  ]);
+  const matches = Object.entries((matchesSnapshot.val() ?? {}) as Record<string, Record<string, unknown>>)
+    .map(([id, match]) => ({
+      id,
+      playedAt: Number(match.playedAt ?? 0),
+      dateKey: String(match.dateKey ?? ""),
+      score3ESO: Number(match.score3ESO ?? 0),
+      score4ESO: Number(match.score4ESO ?? 0),
+      goalscorers4ESO: (match.goalscorers4ESO ?? {}) as Record<string, number>,
+    }))
+    .filter((match) => Number.isSafeInteger(match.score3ESO) && Number.isSafeInteger(match.score4ESO) && (!match.dateKey || match.dateKey <= dateKey)) as PredictionMatchSample[];
+  const players = Object.entries((playersSnapshot.val() ?? {}) as Record<string, Record<string, unknown>>)
+    .map(([id, player]) => ({ id, name: String(player.name ?? "Jugador"), team: String(player.team ?? ""), archived: player.archived === true, unknown: player.unknown === true })) as PredictionPlayerSample[];
+  const questions = createPredictionQuestions(matches, players);
+  const round = { dateKey, status: "open", questions, createdAt: now.getTime(), closesAtLocal: "15:00", matchesAnalyzed: matches.length, target: "Primer partido registrado por Piero en esta fecha" };
+  const result = await mutateEconomy((state) => {
+    if (state.predictionRounds[dateKey]) return { created: false, round: state.predictionRounds[dateKey] };
+    state.predictionRounds[dateKey] = round;
+    return { created: true, round };
+  });
+  if (result.created) await adminMirrorRound(dateKey);
+  return { created: result.created, reason: result.created ? "created" as const : "already_exists" as const, round: result.round };
 }
 
 async function adminMirrorRound(dateKey: string) {
