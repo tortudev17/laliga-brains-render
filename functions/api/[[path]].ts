@@ -65,11 +65,12 @@ export const onRequest = async ({ request, env, params }: RuntimeRequestContext)
 
     const route = routes[path];
     if (!route || request.method === "HEAD") return jsonResponse(404, { error: "No se encontró el recurso." });
-    // Match the working source deployment: handlers use the server-held Firebase
-    // identity, while each user-facing handler verifies the caller separately.
-    // The firebase-proxy route also restricts reads to a small public allowlist
-    // or the authenticated caller's own profile.
-    const databaseToken = await getPieroDatabaseToken(env);
+    // Forward the caller's Firebase ID token to Realtime Database. Render
+    // proxies the request; Firebase still evaluates it as the signed-in user.
+    const usesPieroServiceSession = path === "piero-data" || path === "piero-admin" || path === "school-scheduler";
+    const databaseToken = usesPieroServiceSession
+      ? await getPieroDatabaseToken(env)
+      : request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
     const url = new URL(request.url);
     const event = await toHandlerEvent(request, url);
     const response = await withFirebaseRuntime({ env, databaseToken }, () => Promise.resolve(route(event)));
