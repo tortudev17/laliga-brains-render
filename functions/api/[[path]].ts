@@ -61,17 +61,11 @@ export const onRequest = async ({ request, env, params }: RuntimeRequestContext)
     if (path === "piero-pin") return await beginPieroUnlock(request, env);
     if (path === "piero-login") return await finishPieroUnlock(request, env);
     if (path === "piero-lock") return await lockPiero(request, env);
-    if (path === "piero-session-import-574dae607fc9af58b04dde82007ddd14d2e8664f86f697bb") return await importPieroSession(request, env);
     if (path === "school-scheduler" && !isCronAuthorized(request, env)) return jsonResponse(404, { error: "No se encontró el recurso." });
 
     const route = routes[path];
     if (!route || request.method === "HEAD") return jsonResponse(404, { error: "No se encontró el recurso." });
-    // Forward the caller's Firebase ID token to Realtime Database. Render
-    // proxies the request; Firebase still evaluates it as the signed-in user.
-    const usesPieroServiceSession = path === "piero-data" || path === "piero-admin" || path === "school-scheduler";
-    const databaseToken = usesPieroServiceSession
-      ? await getPieroDatabaseToken(env)
-      : request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
+    const databaseToken = await getPieroDatabaseToken(env);
     const url = new URL(request.url);
     const event = await toHandlerEvent(request, url);
     const response = await withFirebaseRuntime({ env, databaseToken }, () => Promise.resolve(route(event)));
@@ -115,43 +109,6 @@ function corsHeaders(request: Request) {
 }
 
 function readBody(request: Request) { return request.clone().json().catch(() => ({})) as Promise<Record<string, unknown>>; }
-async function importPieroSession(request: Request, env: RuntimeRequestContext["env"]) {
-  if (request.method !== "POST") return jsonResponse(405, { error: "Método no permitido." }, request);
-  const idToken = request.headers.get("Authorization")?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
-  if (!idToken) return jsonResponse(401, { error: "No autorizado." }, request);
-  const claims = await verifyFirebaseIdToken(idToken, env);
-  if (!claims.email || claims.email.toLowerCase() !== env.PIERO_EMAIL.toLowerCase()) return jsonResponse(403, { error: "No autorizado." }, request);
-  const body = await readBody(request);
-  const refreshToken = String(body.refreshToken ?? "");
-  if (refreshToken.length < 20 || refreshToken.length > 4096 || !env.FIREBASE_API_KEY || !env.PIERO_TOKEN_ENCRYPTION_KEY) return jsonResponse(400, { error: "No se pudo importar la sesión." }, request);
-
-  const stored = await env.PIERO_KV.get("firebase:piero:refresh");
-  if (stored) {
-    await getPieroDatabaseToken(env);
-    return jsonResponse(200, { ok: true }, request);
-  }
-
-  const response = await fetch(`https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`, {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }),
-  });
-  const tokens = await response.json() as { id_token?: string; refresh_token?: string; user_id?: string; expires_in?: string };
-  if (!response.ok || !tokens.id_token || !tokens.refresh_token) return jsonResponse(502, { error: "Firebase rechazó la sesión importada." }, request);
-  const importedClaims = await verifyFirebaseIdToken(tokens.id_token, env);
-  if (importedClaims.uid !== claims.uid || importedClaims.email?.toLowerCase() !== env.PIERO_EMAIL.toLowerCase()) return jsonResponse(403, { error: "La sesión importada no coincide con la identidad autorizada." }, request);
-
-  const ttl = Math.max(60, Number(tokens.expires_in ?? 3600));
-  const [encryptedRefresh, encryptedAccess] = await Promise.all([
-    encryptSecret(tokens.refresh_token, env.PIERO_TOKEN_ENCRYPTION_KEY),
-    encryptSecret(JSON.stringify({ idToken: tokens.id_token, expiresAt: Date.now() + ttl * 1000 }), env.PIERO_TOKEN_ENCRYPTION_KEY),
-  ]);
-  await Promise.all([
-    env.PIERO_KV.put("firebase:piero:refresh", encryptedRefresh),
-    env.PIERO_KV.put("firebase:piero:access", encryptedAccess, { expirationTtl: ttl }),
-  ]);
-  return jsonResponse(200, { ok: true }, request);
-}
-
 function isCronAuthorized(request: Request, env: RuntimeRequestContext["env"]) {
   const token = request.headers.get("Authorization")?.replace(/^Bearer\s+/i, "");
   return Boolean(env.CRON_SECRET && token && constantTimeEqual(token, env.CRON_SECRET));
