@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="firebase-api-key" content="AIzaSyA_VPCvZah7MJJA1hmzBeAwnSDvZ1nbY5Y">
+  <title>Versión de la web · LaLigaBrains</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #142c43; background: #edf5fc; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; padding: 10px 16px; border-bottom: 1px solid #d5e3ef; background: #fff; }
+    header strong { font-size: 13px; }
+    header small { display: block; margin-top: 3px; color: #728398; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    nav { display: flex; gap: 7px; }
+    a, button { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; border: 1px solid #cdddeb; border-radius: 9px; color: #215c92; background: #fff; font: 650 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-decoration: none; cursor: pointer; }
+    a[aria-current="page"] { color: white; background: #1676e8; border-color: #1676e8; }
+    main { display: flex; flex: 1; min-height: 0; }
+    iframe { width: 100%; height: 100%; border: 0; background: white; }
+    .version-frame-shell { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+    .version-frame-shell iframe { display: block; flex: 1; min-height: 0; }
+    .version-frame-loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; color: #627991; background: #f7fbff; font-size: 12px; }
+    .version-frame-loading[hidden] { display: none; }
+    .version-loader-spinner { width: 26px; height: 26px; border: 3px solid #d8e8f7; border-top-color: #1676e8; border-radius: 50%; animation: version-spin .8s linear infinite; }
+    @keyframes version-spin { to { transform: rotate(360deg); } }
+    #code-pane { display: flex; flex: 1; min-width: 0; min-height: 0; }
+    #file-list { width: min(280px, 35vw); overflow: auto; padding: 10px; border-right: 1px solid #d5e3ef; background: #f8fbff; }
+    #file-list button { display: block; width: 100%; margin-bottom: 5px; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+    #source { flex: 1; min-width: 0; margin: 0; overflow: auto; padding: 18px; color: #dbeafe; background: #102033; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+    #page-status { margin: auto; max-width: 620px; padding: 28px; text-align: center; color: #627991; font-size: 13px; line-height: 1.5; }
+    #page-status a { margin-top: 12px; }
+    @media (max-width: 640px) { header { align-items: flex-start; flex-direction: column; } nav { width: 100%; } nav a { flex: 1; } #file-list { width: 40vw; } #source { padding: 10px; font-size: 10px; } }
+  </style>
+</head>
+<body>
+  <header id="version-header" hidden>
+    <div><strong>Versión de la web</strong><small id="version-id"></small></div>
+    <nav><a id="preview-link" href="#">Previsualizar</a><a id="code-link" href="#">Ver código</a><a href="./index.html?manageWeb=1">Volver al Reino</a></nav>
+  </header>
+  <main id="version-content"><p id="page-status">Cargando versión…</p></main>
+  <script src="./assets/site-versions.js?v=20261027-5"></script>
+  <script src="./assets/version-page.js?v=20261027-4"></script>
+</body>
+</html>

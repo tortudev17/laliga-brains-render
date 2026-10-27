@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="firebase-api-key" content="AIzaSyA_VPCvZah7MJJA1hmzBeAwnSDvZ1nbY5Y">
+  <title>LaLigaBrains</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #142c43; background: #edf5fc; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 43px; padding: 5px 12px; border-bottom: 1px solid rgba(210,225,239,.85); background: rgba(255,255,255,.92); }
+    header small { color: #728398; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    a { color: #215c92; font-size: 10px; text-decoration: none; }
+    main { display: flex; flex: 1; min-height: 0; }
+    iframe { display: block; flex: 1; width: 100%; min-height: 0; border: 0; background: white; }
+    .version-frame-shell { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+    .version-frame-shell iframe { display: block; flex: 1; min-height: 0; }
+    .version-frame-loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; color: #627991; background: #f7fbff; font-size: 12px; }
+    .version-frame-loading[hidden] { display: none; }
+    .version-loader-spinner { width: 26px; height: 26px; border: 3px solid #d8e8f7; border-top-color: #1676e8; border-radius: 50%; animation: version-spin .8s linear infinite; }
+    @keyframes version-spin { to { transform: rotate(360deg); } }
+    #page-status { margin: auto; max-width: 620px; padding: 28px; text-align: center; color: #627991; font-size: 13px; line-height: 1.5; }
+    #page-status a { display: inline-flex; margin-top: 12px; padding: 10px 14px; border-radius: 9px; background: #1676e8; color: #fff; }
+  </style>
+</head>
+<body>
+  <header id="published-header" hidden><strong>LaLigaBrains</strong><small id="published-id"></small><a id="manage-link" href="./index.html?manageWeb=1" hidden>Volver al Reino</a></header>
+  <main id="published-content"><p id="page-status">Cargando la web actual…</p></main>
+  <script src="./assets/site-versions.js?v=20261027-5"></script>
+  <script src="./assets/version-page.js?v=20261027-4"></script>
+</body>
+</html>

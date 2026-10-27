@@ -1,0 +1,936 @@
+/* Shared app view, dock and the additional user apps. */
+.app-screen[hidden] { display: none; }
+.fantasy-app,
+.kingdom-app {
+  position: absolute;
+  inset: 1px;
+  z-index: 14;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--open-corner-radius, 42px);
+  background: #f7faff;
+  color: var(--app-ink, #142c43);
+  text-shadow: none;
+  font-variant-numeric: tabular-nums;
+}
+.fantasy-app[hidden], .kingdom-app[hidden] { display: none; }
+.app-home-button svg, .app-notifications-button svg { width: 17px; height: 17px; fill: currentColor; }
+.app-notifications-button svg { width: 18px; height: 18px; }
+.matches-view-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.matches-close, .objective-form-row button, .kingdom-content button, .fantasy-action-button {
+  min-height: 32px; padding: 0 11px; border: 0; border-radius: 10px;
+  background: #1676e8; color: #fff; font: 650 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; cursor: pointer;
+}
+.match-row.is-highlighted, .last-match-card.is-highlighted { outline: 3px solid #58a8ff; outline-offset: 2px; transition: outline-color 250ms; }
+.chart-plot { min-height: 74px; color: #8090a0; font-size: 9px; }
+.chart-plot svg { display: block; width: 100%; height: 66px; }
+.chart-plot polyline { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.chart-plot circle { fill: #fff; stroke-width: 2; }
+.chart-legend { display: flex; justify-content: space-between; gap: 8px; color: #708197; font-size: 8px; }
+.chart-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.chart-legend i { width: 7px; height: 7px; border-radius: 50%; background: #1680ef; }
+.chart-legend .chart-legend-4 { background: #24a8c2; }
+.last-match-card.is-highlighted { outline-color: #2c8df1; }
+.home-app[data-app-launch] { -webkit-tap-highlight-color: transparent; }
+.app-icon--goles { background: linear-gradient(145deg,#37c6a6,#169d80); }
+.app-icon--objetivos { background: linear-gradient(145deg,#ffc958,#eb9c14); }
+.app-icon--perfil { background: linear-gradient(145deg,#b99cff,#7a58d2); }
+.app-icon--fantasy { background: linear-gradient(145deg,#ffd35c,#f29218); }
+.app-icon--predicciones { background: linear-gradient(145deg,#42a9ff,#2568d5); }
+.app-icon--enjuego { background: linear-gradient(145deg,#ff8d70,#e54647); }
+.app-icon--reino { background: linear-gradient(145deg,#7358cf,#352388); }
+.app-icon--goles svg, .app-icon--objetivos svg, .app-icon--perfil svg, .app-icon--fantasy svg, .app-icon--predicciones svg, .app-icon--enjuego svg, .app-icon--reino svg { width: 27px; height: 27px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.widget-stats { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; color: #fff; font-size: 9px; }
+.widget-stats > span { display: inline-flex; align-items: center; gap: 4px; }
+.widget-stats .score-widget-number { min-width: 28px; height: 25px; font-size: 13px; }
+.recent-dock { gap: 7px; }
+.recent-app { padding: 0; border-radius: 11px; background: rgba(238,248,255,.25); box-shadow: 0 4px 10px rgba(10,35,53,.2), inset 0 1px 0 rgba(255,255,255,.55); cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.recent-app svg { width: 23px; height: 23px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.goles-content, .objetivos-content, .perfil-content, .fantasy-content, .kingdom-content { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 16px 20px 20px; overscroll-behavior: contain; }
+.goles-content, .objetivos-content, .perfil-content, .fantasy-content, .kingdom-content { display: flex; flex-direction: column; gap: 12px; }
+.fantasy-content section, .kingdom-content section { display: flex; min-width: 0; flex-direction: column; gap: 8px; }
+.fantasy-content h2, .kingdom-content h2, .kingdom-content h3, .perfil-content h2 { margin: 2px 0; color: var(--app-ink); font-size: 14px; }
+.fantasy-list, .kingdom-list { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
+.fantasy-player-row, .fantasy-roster-row, .fantasy-transfer-row, .fantasy-activity-row, .fantasy-activity-empty, .kingdom-admin-row, .kingdom-request-card, .kingdom-announcement, .kingdom-activity-row { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--app-line); border-radius: 12px; background: #fff; color: var(--app-ink); font-size: 10px; }
+.fantasy-player-row, .kingdom-admin-row { justify-content: space-between; }
+.fantasy-player-details { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.fantasy-player-goals-link { align-self:flex-start; min-height:25px; padding:0 11px; border:1px solid #d5e8fb; border-radius:999px; background:#edf6ff; color:#1769bd; font:750 10px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer; transition:background-color 140ms ease, transform 140ms ease; }
+.fantasy-player-goals-link:hover { background:#dceeff; transform:translateY(-1px); }
+.fantasy-player-goals-link:focus-visible { outline:2px solid #1676e8; outline-offset:2px; }
+.fantasy-action-button { display:inline-flex; align-items:center; justify-content:center; white-space:nowrap; }
+.fantasy-player-details strong, .fantasy-roster-row strong { color: var(--app-ink); }
+.fantasy-player-details span, .fantasy-player-details small, .fantasy-transfer-row span, .fantasy-activity-row small { color: var(--app-muted); font-size: 9px; }
+.fantasy-invest-input, .kingdom-admin-row input, .kingdom-admin-row select, .kingdom-content input, .kingdom-content textarea, .kingdom-content select, .objective-form input, .objective-form textarea { min-width: 0; min-height: 32px; padding: 6px 9px; border: 1px solid var(--app-line); border-radius: 9px; background: #fff; color: var(--app-ink); font: 550 10px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+.fantasy-invest-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.fantasy-invest-controls small { flex-basis: 100%; color: #718197; font-size: 8px; }
+.fantasy-roster-row { justify-content: space-between; }
+.fantasy-transfer-row { flex-wrap: wrap; }
+.fantasy-activity-row { flex-direction: column; align-items: flex-start; }
+.fantasy-activity-row strong { color: #174b77; }
+.objective-form-row { display: flex; gap: 7px; }
+.objective-form-row input { flex: 1 1 auto; }
+.objective-form-row button { flex: 0 0 auto; }
+.kingdom-content form { display: flex; flex-direction: column; gap: 8px; }
+.kingdom-content textarea { min-height: 62px; resize: vertical; }
+.kingdom-content button { flex: 0 0 auto; }
+.kingdom-admin-row { flex-wrap: wrap; }
+.kingdom-admin-copy { display: flex; flex-direction: column; flex: 1 1 100px; }
+.kingdom-admin-copy small, .kingdom-date { color: var(--app-muted); font-size: 8px; }
+.kingdom-row-actions { display: flex; gap: 5px; }
+.kingdom-request-card, .kingdom-announcement { display: block; }
+.kingdom-response-form { margin-top: 8px; }
+.kingdom-settings-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
+.kingdom-setting-field { display: flex; flex-direction: column; gap: 4px; color: var(--app-muted); font-size: 9px; }
+.kingdom-settings-form button, .kingdom-new-player-form button { grid-column: 1/-1; }
+.kingdom-content [hidden] { display: none !important; }
+.profile-header { display: flex; align-items: center; gap: 12px; }
+.profile-header p { margin: 4px 0; color: var(--app-muted); font-size: 10px; }
+.app-status { color: #677b8f; font-size: 10px; }
+.app-status.is-error { color: #ad2e38; }
+.app-status.is-success { color: #287244; }
+.kingdom-version-current { margin: 0; color: #60758a; font-size: 10px; }
+.kingdom-version-current code { display: inline-block; max-width: 100%; overflow-wrap: anywhere; color: #214f80; font: 700 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.kingdom-agent-panel { display: flex; flex-direction: column; gap: 7px; padding: 12px; border: 1px solid #dce8f3; border-radius: 14px; background: linear-gradient(135deg,#f5f9ff,#fff); }
+.kingdom-agent-panel h4, .kingdom-version-heading h4 { margin: 0; color: #174f85; font-size: 12px; }
+.kingdom-agent-panel p, #kingdom-web-upload-form small { margin: 0; color: #718197; font-size: 9px; line-height: 1.45; }
+#kingdom-web-upload-progress:not([hidden]) { display: block; width: 100%; height: 8px; border: 0; border-radius: 999px; overflow: hidden; accent-color: #1676e8; }
+#kingdom-web-upload-progress::-webkit-progress-bar { border-radius: 999px; background: #e7eff8; }
+#kingdom-web-upload-progress::-webkit-progress-value { border-radius: 999px; background: linear-gradient(90deg,#1676e8,#29a7be); transition: width .2s ease; }
+#kingdom-web-upload-progress-label { min-height: 1.2em; }
+.kingdom-agent-panel textarea { min-height: 78px; }
+.kingdom-agent-download { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 0 11px; border: 1px solid #cad9ea; border-radius: 10px; background: white; color: #235b91; font: 650 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-decoration: none; }
+.kingdom-version-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kingdom-version-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 11px; border: 1px solid var(--app-line); border-radius: 12px; background: #fff; }
+.kingdom-version-copy { display: flex; min-width: 120px; flex: 1 1 120px; flex-direction: column; gap: 3px; }
+.kingdom-version-copy strong { color: #214f80; font: 700 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.kingdom-version-copy small { color: var(--app-muted); font-size: 9px; }
+.kingdom-version-badge { padding: 4px 7px; border-radius: 999px; background: #e7f6ed; color: #267043; font-size: 8px; font-weight: 750; }
+.kingdom-version-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.kingdom-content button[data-kingdom-action="delete-web-version"] { background: #fff0f0; color: #a53037; }
+.kingdom-content button[data-kingdom-action="delete-web-version"]:hover { background: #ffe2e3; }
+@media (max-width: 600px) {
+  .kingdom-agent-panel { padding: 8px; border-radius: 10px; }
+  .kingdom-version-row { gap: 5px; padding: 7px; }
+  .kingdom-version-heading { align-items: flex-start; }
+  .kingdom-version-actions { width: 100%; }
+  .kingdom-agent-download { min-height: 24px; padding: 0 7px; font-size: 7px; }
+}
+@media (max-width: 600px) {
+  .app-icon--goles svg, .app-icon--objetivos svg, .app-icon--perfil svg, .app-icon--fantasy svg, .app-icon--predicciones svg, .app-icon--enjuego svg, .app-icon--reino svg { width: 14px; height: 14px; }
+  .widget-stats { flex-direction: column; gap: 3px; font-size: 7px; }
+  .widget-stats .score-widget-number { min-width: 20px; height: 18px; font-size: 10px; }
+  .recent-app svg { width: 16px; height: 16px; }
+  .goles-content, .objetivos-content, .perfil-content, .fantasy-content, .kingdom-content { gap: 7px; padding: 8px; }
+  .fantasy-content h2, .kingdom-content h2, .kingdom-content h3, .perfil-content h2 { font-size: 9px; }
+  .fantasy-player-row, .fantasy-roster-row, .fantasy-transfer-row, .fantasy-activity-row, .kingdom-admin-row, .kingdom-request-card, .kingdom-announcement { gap: 5px; padding: 6px; border-radius: 8px; font-size: 7px; }
+  .fantasy-player-details span, .fantasy-player-details small, .fantasy-transfer-row span, .fantasy-activity-row small { font-size: 6px; }
+  .fantasy-action-button, .fantasy-invest-input, .kingdom-admin-row input, .kingdom-admin-row select, .kingdom-content input, .kingdom-content textarea, .kingdom-content select, .objective-form input { min-height: 24px; padding: 4px 6px; border-radius: 6px; font-size: 7px; }
+  .matches-close, .objective-form-row button, .kingdom-content button, .fantasy-action-button { min-height: 24px; padding: 0 7px; border-radius: 7px; font-size: 7px; }
+  .fantasy-player-goals-link { min-height:19px; padding:0 7px; font-size:7px; }
+}
+
+/* Refinements for the compact 1:1.4 inner phone screens. */
+.score-widget {
+  display: grid;
+  grid-template-rows: auto repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 9px;
+  border-radius: 17px;
+  background: rgba(35, 116, 169, 0.3);
+}
+.score-widget-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+.score-widget-title span { font-size: 12px; }
+.score-widget-row {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 10px;
+}
+.score-widget-grade { font-size: 8px; }
+.widget-stats {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.widget-stat {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: rgba(255,255,255,.94);
+  font-size: 7px;
+  line-height: 1;
+}
+.widget-stats .score-widget-number {
+  min-width: 28px;
+  width: 32px;
+  height: 23px;
+  padding: 0 3px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+.home-app-label {
+  display: block;
+  width: 56px;
+  max-width: 56px;
+  overflow: hidden;
+  font-size: 7px;
+  line-height: 1.05;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent-app { width: 42px; height: 42px; }
+
+.app-screen,
+.fantasy-app,
+.kingdom-app,
+.competition-app {
+  background-color: #f4f9ff;
+  background-image: linear-gradient(rgba(247, 251, 255, .64), rgba(247, 251, 255, .76)), url("./duo-wallpaper.jpg");
+  background-position: center;
+  background-size: cover;
+}
+.partidos-content,
+.goles-content,
+.objetivos-content,
+.perfil-content,
+.fantasy-content,
+.kingdom-content,
+.competition-content {
+  padding-bottom: 78px;
+}
+.app-home-button--large {
+  position: absolute;
+  z-index: 22;
+  bottom: 11px;
+  left: 50%;
+  display: inline-flex;
+  width: 148px;
+  height: 49px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 18px;
+  border: 1px solid rgba(255,255,255,.46);
+  border-radius: 15px;
+  background: linear-gradient(145deg, #2bd183, #16a95f);
+  color: #fff;
+  font: 750 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 8px 20px rgba(18, 143, 78, .3), inset 0 1px 0 rgba(255,255,255,.35);
+  transform: translateX(-50%);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.app-home-button--large:hover { box-shadow: 0 10px 24px rgba(18, 143, 78, .37), inset 0 1px 0 rgba(255,255,255,.35); }
+.app-home-button--large:active { transform: translateX(-50%) scale(.97); }
+.app-home-button--large svg { width: 22px; height: 22px; fill: currentColor; }
+.app-home-button--large:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+.last-match-result-label {
+  margin: 0;
+  color: #687d91;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.last-match-score {
+  display: grid;
+  min-height: 86px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #cfe2f6;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(231,244,255,.96), rgba(213,233,253,.96));
+  color: #174f85;
+}
+.match-score-side { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 6px; }
+.match-score-side > span { color: #58728b; font-size: 9px; font-weight: 700; white-space: nowrap; }
+.match-score-side > strong { color: #0c4f91; font-size: clamp(17px, 3vh, 23px); font-weight: 850; letter-spacing: -.05em; line-height: 1; white-space: nowrap; }
+.match-score-vs { color: #7690aa; font-size: 8px; font-weight: 750; text-transform: uppercase; }
+.match-score-fallback { grid-column: 1 / -1; color: #0c4f91; font-size: 19px; text-align: center; }
+
+#predicciones-app .competition-content,
+#en-juego-app .competition-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  align-items: stretch;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 22px 76px;
+}
+#predicciones-app .competition-content > .prediction-intro,
+#predicciones-app .competition-content > .prediction-balance,
+#predicciones-app .competition-content > .prediction-card:last-child,
+#en-juego-app .competition-content > * { grid-column: 1 / -1; }
+#predicciones-app .prediction-intro,
+#predicciones-app .prediction-card,
+#predicciones-app .prediction-balance,
+#en-juego-app .prediction-intro,
+#en-juego-app .prediction-balance,
+#en-juego-app .assignment-form,
+#en-juego-app .competition-content > section,
+#en-juego-app #assignment-status {
+  width: min(100%, 560px);
+  justify-self: center;
+}
+#predicciones-app .prediction-intro,
+#en-juego-app .prediction-intro { margin: 0; color: #5f7389; font-size: 10px; line-height: 1.35; }
+#predicciones-app .prediction-balance,
+#en-juego-app .prediction-balance { max-width: 560px; }
+#predicciones-app .prediction-card { min-width: 0; width: 100%; }
+#predicciones-app .prediction-card h2 { margin: 0; color: #152d44; font-size: 14px; line-height: 1.2; }
+#predicciones-app .prediction-card p { color: #718197; font-size: 10px; }
+#predicciones-app .prediction-card { gap: 7px; padding: 9px; }
+#predicciones-app .prediction-balance,
+#en-juego-app .prediction-balance { padding: 6px 12px; }
+#predicciones-app .prediction-head p { margin: 4px 0 0; }
+#predicciones-app .prediction-options { grid-template-columns: repeat(3, minmax(0,1fr)); }
+#predicciones-app #scorer-outcome-selection { grid-template-columns: repeat(2, minmax(0,1fr)); }
+#predicciones-app .player-predictions { gap: 4px; }
+#predicciones-app .player-prediction-row { min-height: 27px; gap: 4px; padding: 3px 6px; border-radius: 9px; }
+#predicciones-app .player-prediction-row > strong { font-size: 9px; }
+#predicciones-app .player-prediction-row .probability-bar { font-size: 7px; }
+#predicciones-app .player-prediction-row .probability-bar strong { font-size: 8px; }
+#predicciones-app .player-prediction-row .prediction-option { min-height: 21px; padding: 3px 6px; font-size: 8px; }
+#predicciones-app .prediction-form { flex-wrap: wrap; }
+#predicciones-app .prediction-form label { flex-basis: 100%; }
+#predicciones-app .prediction-form .coin-input { max-width: none; flex: 1 1 100px; }
+#predicciones-app .prediction-option { padding-inline: 7px; font-size: 9px; }
+#predicciones-app .prediction-option > span { white-space: nowrap; }
+#predicciones-app .coin-input { display: flex; align-items: center; gap: 5px; min-height: 36px; padding: 0 10px; }
+#predicciones-app .coin-input input { width: 100%; min-width: 0; min-height: 30px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--app-ink); font: 700 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+#predicciones-app .coin-input span { flex: 0 0 auto; color: #74869a; font-size: 9px; white-space: nowrap; }
+#predicciones-app .prediction-form button { min-width: 64px; }
+#predicciones-app #winner-probability .probability-track { grid-column: 1 / -1; }
+#predicciones-app .prediction-card:last-child { width: 100%; padding: 7px 10px; }
+#predicciones-app .prediction-card:last-child h2 { font-size: 12px; }
+#predicciones-app #my-bets { display: flex; flex-wrap: wrap; gap: 6px; color: #647b92; font-size: 10px; }
+#predicciones-app #my-bets > p { margin: 0; }
+#predicciones-app .bet-history-row { padding: 6px 9px; border: 1px solid #dce9f6; border-radius: 999px; background: #f4f9ff; }
+#en-juego-app .assignment-form { display: grid; grid-template-columns: minmax(0,1fr) minmax(130px,1.2fr); align-items: end; gap: 6px; padding: 10px; border: 1px solid var(--app-line); border-radius: 14px; background: rgba(255,255,255,.92); }
+#en-juego-app .assignment-form label { gap: 3px; color: #536c82; font-size: 9px; }
+#en-juego-app .assignment-form select { min-height: 31px; border-radius: 9px; }
+#en-juego-app .assignment-form button { min-height: 31px; border-radius: 9px; }
+#en-juego-app .assignment-estimate { font-size: 8px; }
+#en-juego-app .competition-content > section h2 { margin: 0; color: #152d44; font-size: 15px; }
+#en-juego-app .assignment-row { gap: 4px 9px; padding: 8px 10px; border-radius: 12px; }
+#en-juego-app .assignment-row h3 { font-size: 10px; }
+#en-juego-app .assignment-row p { font-size: 8px; }
+#en-juego-app .assignment-timer, #en-juego-app .assignment-timer strong { font-size: 8px; }
+#en-juego-app .assignment-duration, #en-juego-app .assignment-estimate, #en-juego-app .assignment-form button { grid-column: 1/-1; }
+#en-juego-app .assignment-duration { display:flex; align-items:center; gap:10px; }
+#en-juego-app .assignment-duration input { flex:1; accent-color:var(--app-blue); }
+#en-juego-app .assignment-duration strong { min-width:35px; color:var(--app-blue-deep); text-align:center; }
+#en-juego-app .assignment-estimate { margin:0; color:#647b92; font-size:9px; }
+
+@media (max-width: 600px) {
+  .score-widget { gap: 4px; padding: 6px; border-radius: 10px; }
+  .score-widget-title { font-size: 7px; }
+  .score-widget-title span { font-size: 9px; }
+  .score-widget-row { gap: 3px; padding: 4px; border-radius: 7px; }
+  .score-widget-grade { font-size: 7px; }
+  .widget-stats { gap: 3px; }
+  .widget-stat { gap: 2px; font-size: 6px; }
+  .widget-stats .score-widget-number { min-width: 22px; width: 26px; height: 18px; border-radius: 5px; font-size: 10px; }
+  .home-app-label { width: 30px; max-width: 30px; font-size: 6px; }
+  .app-home-button--large { bottom: 7px; width: 115px; height: 38px; border-radius: 11px; gap: 6px; font-size: 10px; }
+  .app-home-button--large svg { width: 17px; height: 17px; }
+  .partidos-content { padding-bottom: 58px; }
+  .goles-content, .objetivos-content, .perfil-content, .fantasy-content, .kingdom-content, .competition-content { padding-bottom: 58px; }
+  .last-match-score { min-height: 56px; gap: 3px; padding: 6px; border-radius: 10px; }
+  .match-score-side { gap: 4px; }
+  .match-score-side > span { font-size: 7px; }
+  .match-score-side > strong { font-size: 14px; }
+  #predicciones-app .competition-content, #en-juego-app .competition-content { gap: 7px; padding: 8px 8px 58px; }
+  #predicciones-app .competition-content { grid-template-columns: minmax(0, 1fr); align-content: start; }
+  #predicciones-app .competition-content > * { grid-column: 1; }
+  #predicciones-app .prediction-card { padding: 7px; }
+  #predicciones-app .prediction-card h2 { font-size: 9px; }
+  #predicciones-app .prediction-card p, #predicciones-app .prediction-intro, #en-juego-app .prediction-intro { font-size: 7px; }
+  #en-juego-app .assignment-form { grid-template-columns: 1fr 1fr; gap: 5px; padding: 7px; border-radius: 9px; }
+}
+.score-widget {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto repeat(2, minmax(0, 1fr));
+  align-content: stretch;
+}
+.score-widget-title { grid-column: 1 / -1; }
+.app-screen,
+.fantasy-app,
+.kingdom-app,
+.competition-app {
+  background-image: linear-gradient(rgba(246, 250, 255, .56), rgba(246, 250, 255, .7)), url("./duo-wallpaper.jpg");
+}
+.partidos-section-title { font-size: 17px; }
+.partidos-overview > div:first-child { display: flex; flex-direction: column; gap: 3px; }
+.partidos-section-subtitle { margin: 0; font-size: 9px; }
+.goal-player-block { display:flex; flex-direction:column; gap:5px; }
+.player-match-list[hidden] { display:none !important; }
+.goal-player-toggle { min-height:56px; grid-template-columns:40px minmax(0,1fr) auto; padding:8px 11px; text-align:left; }
+.goal-player-toggle::before { content:"⚽"; display:grid; width:34px; height:34px; place-items:center; border-radius:50%; background:linear-gradient(145deg,#dff1ff,#b8dcfc); font-size:17px; }
+.goal-player-toggle > strong { color:#193951; font-size:13px; }
+.goal-player-toggle > span { color:#1664b6; font-size:11px; font-weight:700; }
+.player-match-button { width:100%; border:1px solid var(--app-line); font:550 10px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-align:left; cursor:pointer; }
+.player-match-button:hover { border-color:#80baf3; background:#f1f8ff; }
+.objective-row .objective-copy { flex:1 1 auto; }
+.objective-row .objective-copy.is-done { color:#8b99a6; text-decoration:line-through; }
+.profile-avatar { flex:0 0 auto; }
+@media (max-width:600px) {
+  .partidos-section-title { font-size:12px; }
+  .goal-player-toggle { min-height:38px; grid-template-columns:26px minmax(0,1fr) auto; gap:5px; padding:5px; }
+  .goal-player-toggle::before { width:24px; height:24px; font-size:12px; }
+  .goal-player-toggle > strong { font-size:8px; }
+  .goal-player-toggle > span { font-size:7px; }
+  .player-match-button { font-size:7px; }
+}
+
+/* Final polish: keep controls compact while making the app surfaces richer. */
+.balance-card strong { font-size: 18px; }
+.fantasy-player-row::before,
+.fantasy-roster-row::before {
+  content: "⚽";
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #eff8ff, #c9e5fb);
+  box-shadow: inset 0 1px 2px rgba(255,255,255,.9);
+  font-size: 17px;
+}
+.fantasy-player-row .fantasy-player-details,
+.fantasy-roster-row .fantasy-player-goals-link { flex: 1 1 auto; }
+.kingdom-content .kingdom-settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #d2e5f6;
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(239,248,255,.96), rgba(225,241,253,.96));
+}
+.kingdom-settings-form > h2,
+.kingdom-settings-form > p,
+.kingdom-settings-form > button { grid-column: 1 / -1; }
+.kingdom-settings-form > h2 { margin: 0; color: #174f85; font-size: 15px; }
+.kingdom-settings-form > p { margin: -3px 0 1px; color: #708197; font-size: 9px; }
+.kingdom-admin-view > .kingdom-settings-form { margin-bottom: 48px; }
+.kingdom-admin-view > p { margin: -4px 0 1px; color: #708197; font-size: 10px; }
+.kingdom-content section > h3 { color: #1b3d59; font-size: 12px; }
+.kingdom-settings-form .kingdom-setting-field { min-height: 48px; padding: 6px 8px; border: 1px solid rgba(205,224,241,.88); border-radius: 10px; background: rgba(255,255,255,.82); }
+.kingdom-settings-form .kingdom-setting-field input:not([type="checkbox"]) { width: 100%; min-height: 28px; }
+.kingdom-settings-form .kingdom-setting-field:has(input[type="checkbox"]) { flex-direction: row; align-items: center; justify-content: space-between; }
+.kingdom-admin-view > section { padding: 12px; border: 1px solid #dce8f3; border-radius: 15px; background: rgba(255,255,255,.83); }
+.fantasy-content > .balance-card { padding: 12px 16px; }
+.objetivos-content #objetivos-status { line-height: 1.5; }
+.objetivos-content .objective-form {
+  padding: 14px;
+  border: 1px solid #d7e6f4;
+  border-radius: 16px;
+  background: rgba(255,255,255,.94);
+  box-shadow: 0 6px 18px rgba(31,73,112,.06);
+}
+.objetivos-content .objective-form > label { display: block; margin-bottom: 8px; color: #24445f; font-size: 12px; font-weight: 750; }
+.objetivos-content .objective-form-row input { min-height: 40px; font-size: 11px; }
+.objetivos-content .objective-form-row button { min-height: 40px; border-radius: 11px; font-size: 10px; }
+.objetivos-content #objetivos-status { padding: 15px; border: 1px dashed #c4daed; border-radius: 14px; background: rgba(244,250,255,.84); color: #647b92; font-size: 10px; }
+#en-juego-app .assignment-form { gap: 6px; padding: 10px; border-radius: 14px; }
+#en-juego-app .assignment-form label { gap: 3px; color: #536c82; font-size: 9px; }
+#en-juego-app .assignment-form select,
+#en-juego-app .assignment-form button { min-height: 31px; border-radius: 9px; }
+#en-juego-app .assignment-estimate { font-size: 8px; }
+#en-juego-app .competition-content > section h2 { margin: 0; color: #152d44; font-size: 15px; }
+#en-juego-app .assignment-row { gap: 4px 9px; padding: 8px 10px; border-radius: 12px; }
+#en-juego-app .assignment-row h3 { font-size: 10px; }
+#en-juego-app .assignment-row p,
+#en-juego-app .assignment-timer,
+#en-juego-app .assignment-timer strong { font-size: 8px; }
+@media (max-width: 600px) {
+  .fantasy-player-row::before, .fantasy-roster-row::before { flex-basis: 25px; width: 25px; height: 25px; font-size: 13px; }
+  .kingdom-content .kingdom-settings-form { gap: 5px; padding: 7px; }
+  #en-juego-app .assignment-form { gap: 5px; padding: 7px; }
+}
+
+/* Mobile text remains readable inside the scaled, horizontally folded screen. */
+@media (max-width: 600px) {
+  .app-home-button--large {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    width: 128px;
+    height: 44px;
+    flex: 0 0 44px;
+    align-self: center;
+    margin: 0 auto 7px;
+    transform: none;
+    font-size: 12px;
+  }
+  .app-home-button--large:active { transform: scale(.97); }
+  .app-home-button--large svg { width: 19px; height: 19px; }
+  .partidos-content, .goles-content, .objetivos-content, .perfil-content,
+  .fantasy-content, .kingdom-content, .competition-content { padding-bottom: 16px; }
+  .score-widget-title { font-size: 9px; }
+  .score-widget-grade, .widget-stat { font-size: 9px; }
+  .home-app-label { display: none; }
+  .app-icon--goles svg, .app-icon--objetivos svg, .app-icon--perfil svg,
+  .app-icon--fantasy svg, .app-icon--predicciones svg, .app-icon--enjuego svg,
+  .app-icon--reino svg { width: 18px; height: 18px; }
+  #phone-home .home-right-rail .recent-app { width: 28px; height: 28px; }
+  .partidos-section-title { font-size: 14px; }
+  .goal-player-toggle { min-height: 46px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 7px; padding: 7px; }
+  .goal-player-toggle::before { width: 28px; height: 28px; font-size: 14px; }
+  .goal-player-toggle > strong { font-size: 12px; }
+  .goal-player-toggle > span, .player-match-button { font-size: 11px; }
+  .player-match-button { min-height: 36px; padding: 7px; }
+  .goles-content, .objetivos-content, .perfil-content, .fantasy-content, .kingdom-content {
+    gap: 10px;
+    padding: 12px 12px 68px;
+  }
+  .fantasy-content h2, .kingdom-content h2, .kingdom-content h3, .perfil-content h2 { font-size: 13px; }
+  .fantasy-player-row {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+  .fantasy-player-row::before { grid-column: 1; grid-row: 1; justify-self: center; }
+  .fantasy-player-row .fantasy-player-details { grid-column: 2; width: 100%; }
+  .fantasy-player-row .fantasy-invest-controls {
+    display: grid;
+    grid-column: 1 / -1;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+  }
+  .fantasy-player-row .fantasy-invest-input { width: 100%; }
+  .fantasy-player-row .fantasy-invest-controls small { grid-column: 1 / -1; font-size: 10px; line-height: 1.35; }
+  .fantasy-player-row > .fantasy-action-button { grid-column: 1 / -1; width: 100%; min-height: 40px; }
+  .fantasy-player-row, .fantasy-roster-row, .fantasy-transfer-row, .fantasy-activity-row,
+  .fantasy-activity-empty, .kingdom-admin-row, .kingdom-request-card, .kingdom-announcement,
+  .kingdom-activity-row {
+    gap: 7px;
+    padding: 8px;
+    border-radius: 10px;
+    font-size: 11px;
+  }
+  .fantasy-player-details span, .fantasy-player-details small, .fantasy-transfer-row span,
+  .fantasy-activity-row small, .kingdom-admin-copy small, .kingdom-date { font-size: 10px; }
+  .fantasy-invest-controls small { font-size: 10px; }
+  .fantasy-action-button, .fantasy-invest-input, .kingdom-admin-row input, .kingdom-admin-row select,
+  .kingdom-content input, .kingdom-content textarea, .kingdom-content select, .objective-form input {
+    min-height: 36px;
+    padding: 7px 9px;
+    border-radius: 9px;
+    font-size: 16px;
+  }
+  .matches-close, .objective-form-row button, .kingdom-content button, .fantasy-action-button {
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 9px;
+    font-size: 11px;
+  }
+  .fantasy-player-goals-link { min-height: 36px; padding: 0 10px; font-size: 11px; }
+  .kingdom-content .kingdom-settings-form { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px; }
+  .kingdom-settings-form .kingdom-setting-field { min-height: 56px; padding: 8px; font-size: 10px; }
+  .kingdom-settings-form .kingdom-setting-field input:not([type="checkbox"]) { min-height: 36px; }
+  .kingdom-content section > h3 { font-size: 12px; }
+  .kingdom-admin-view > section { padding: 10px; }
+  .profile-header p, .app-status { font-size: 11px; }
+  .objetivos-content .objective-form > label { font-size: 13px; }
+  .objetivos-content .objective-form-row input { min-height: 42px; font-size: 16px; }
+  .objetivos-content .objective-form-row button { min-height: 42px; font-size: 11px; }
+  #predicciones-app .competition-content, #en-juego-app .competition-content { gap: 10px; padding: 12px 10px 68px; }
+  #predicciones-app .prediction-intro, #en-juego-app .prediction-intro { font-size: 11px; line-height: 1.4; }
+  #predicciones-app .prediction-balance, #en-juego-app .prediction-balance { font-size: 11px; }
+  #predicciones-app .prediction-balance strong, #en-juego-app .prediction-balance strong { font-size: 14px; }
+  #predicciones-app .prediction-card { gap: 9px; padding: 10px; }
+  #predicciones-app .prediction-card h2 { font-size: 13px; }
+  #predicciones-app .prediction-card p { font-size: 11px; }
+  #predicciones-app .prediction-option { min-height: 38px; padding: 6px 8px; font-size: 11px; }
+  #predicciones-app .prediction-option strong { font-size: 11px; }
+  #predicciones-app .probability-bar, #predicciones-app .probability-bar strong { font-size: 11px; }
+  #predicciones-app #winner-probability { font-size: 11px; }
+  #predicciones-app #winner-probability .probability-track { height: 7px; }
+  #predicciones-app .player-prediction-row { min-height: 38px; gap: 6px; padding: 5px 7px; }
+  #predicciones-app .player-prediction-row > strong,
+  #predicciones-app .player-prediction-row .probability-bar,
+  #predicciones-app .player-prediction-row .probability-bar strong { font-size: 11px; }
+  #predicciones-app .player-prediction-row .prediction-option { min-height: 36px; padding: 5px 8px; font-size: 11px; }
+  #predicciones-app .prediction-form label { min-height: 32px; font-size: 11px; }
+  #predicciones-app .coin-input { min-height: 42px; max-width: none; }
+  #predicciones-app .coin-input input { min-height: 38px; font-size: 16px; }
+  #predicciones-app .coin-input span, #predicciones-app #my-bets { font-size: 11px; }
+  #predicciones-app .prediction-form button { min-height: 42px; padding-inline: 12px; font-size: 11px; }
+  #predicciones-app .app-error, #predicciones-app .app-success,
+  #en-juego-app .app-error, #en-juego-app .app-success { font-size: 10px; }
+  #en-juego-app .assignment-form {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    padding: 10px;
+  }
+  #en-juego-app .assignment-form label { font-size: 11px; }
+  #en-juego-app .assignment-form select,
+  #en-juego-app .assignment-form button { min-height: 42px; font-size: 11px; }
+  #en-juego-app .assignment-form select { width: 100%; min-width: 0; min-height: 42px; font-size: 14px; }
+  #en-juego-app .assignment-duration input { min-height: 40px; }
+  #en-juego-app .assignment-estimate { font-size: 11px; }
+  #en-juego-app .competition-content > section h2 { font-size: 14px; }
+  #en-juego-app .assignment-row { gap: 6px 9px; padding: 9px; }
+  #en-juego-app .assignment-row h3 { font-size: 12px; }
+  #en-juego-app .assignment-row p, #en-juego-app .assignment-timer,
+  #en-juego-app .assignment-timer strong { font-size: 11px; }
+  #en-juego-app .assignment-reward { padding: 6px 9px; font-size: 11px; }
+  #en-juego-app .claim-button { min-height: 40px; padding-inline: 10px; font-size: 11px; }
+  .chart-legend { gap: 6px; font-size: 10px; }
+  .trend-card h3 { font-size: 9px; letter-spacing: .025em; }
+}
+
+.notification-target {
+  scroll-margin: 12px;
+  animation: notification-target-pulse 2.4s ease both;
+}
+
+.partidos-admin-panel {
+  display: flex;
+  min-width: 0;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #d8e7f5;
+  border-radius: 16px;
+  background: #edf6ff;
+}
+.partidos-admin-panel[hidden] { display: none; }
+.partidos-admin-heading h2, .manual-goals-admin h3, .match-admin-scorers-wrap h3 {
+  margin: 0;
+  color: var(--app-ink, #142c43);
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: -.02em;
+}
+.partidos-admin-heading p, .manual-goals-admin > p, .match-admin-scorers-wrap > p {
+  margin: 4px 0 0;
+  color: var(--app-muted, #708197);
+  font-size: 10px;
+  line-height: 1.45;
+}
+.partidos-admin-form {
+  display: grid;
+  grid-template-columns: minmax(120px, .7fr) repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--app-line, #dfe8f2);
+  border-radius: 13px;
+  background: #fff;
+}
+.match-admin-field, .match-admin-score > label {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  color: #526a80;
+  font-size: 10px;
+  font-weight: 650;
+}
+.match-admin-field input, .match-admin-score input, .match-admin-scorer-select, .manual-goal-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid #d8e3ee;
+  border-radius: 9px;
+  background: #fff;
+  color: var(--app-ink, #142c43);
+  font: 550 11px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.match-admin-score {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 7px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid #dce8f3;
+  border-radius: 11px;
+}
+.match-admin-score legend { padding: 0 4px; color: #23425d; font-size: 10px; font-weight: 750; }
+.match-admin-score > span { padding-bottom: 9px; color: #8294a5; font-size: 12px; }
+.match-admin-scorers-wrap, .match-admin-form-actions, .partidos-admin-status { grid-column: 1 / -1; }
+.match-admin-scorers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 7px; }
+.match-admin-scorer-row { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 7px; color: #526a80; font-size: 10px; font-weight: 650; }
+.match-admin-scorer-control { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 5px; }
+.match-admin-scorer-control .match-admin-secondary { min-height: 34px; padding: 0 8px; white-space: nowrap; }
+.match-admin-no-memory.is-selected { border-color: #b8d3ec; background: #eaf4ff; color: #1b62a8; }
+.match-admin-no-scorers { grid-column: 1 / -1; margin: 0; color: #718398; font-size: 10px; }
+.match-admin-form-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.match-admin-primary, .match-admin-secondary, .match-admin-actions button {
+  min-height: 33px;
+  padding: 0 12px;
+  border: 1px solid #1676e8;
+  border-radius: 9px;
+  background: #1676e8;
+  color: #fff;
+  font: 650 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+.match-admin-secondary { border-color: #d4e2ef; background: #fff; color: #34536c; }
+.match-admin-actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: 6px; }
+.match-admin-actions button { min-height: 29px; padding: 0 9px; font-size: 9px; }
+.match-admin-actions button:last-child { border-color: #e2c7c7; background: #fff; color: #a23f46; }
+.match-admin-primary:disabled, .match-admin-secondary:disabled, .match-admin-actions button:disabled { opacity: .55; cursor: wait; }
+.partidos-admin-status { min-height: 14px; margin: 0; color: #526a80; font-size: 10px; }
+.partidos-admin-status.is-error { color: #b43c46; }
+.partidos-admin-status.is-success { color: #24734c; }
+.manual-goals-admin { display: flex; flex-direction: column; gap: 7px; }
+.manual-goals-list { display: flex; flex-direction: column; gap: 6px; }
+.manual-goal-row { display: grid; grid-template-columns: minmax(0, 1fr) 78px auto; align-items: center; gap: 7px; padding: 8px 10px; border: 1px solid var(--app-line, #dfe8f2); border-radius: 11px; background: #fff; }
+.manual-goal-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.manual-goal-copy strong { overflow: hidden; color: #24415b; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.manual-goal-copy small { color: #74879a; font-size: 9px; }
+.manual-goal-row input { min-height: 31px; font-size: 11px; }
+.manual-goal-row .match-admin-secondary { min-height: 31px; padding: 0 9px; font-size: 9px; }
+.goal-manual-count { margin: 0 0 4px; color: #62778b; font-size: 9px; }
+
+@media (max-width: 460px) {
+  .partidos-admin-panel { gap: 8px; padding: 9px; border-radius: 12px; }
+  .partidos-admin-heading h2 { font-size: 13px; }
+  .partidos-admin-heading p, .manual-goals-admin > p, .match-admin-scorers-wrap > p { font-size: 9px; }
+  .partidos-admin-form { grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 8px; }
+  .match-admin-date, .match-admin-score, .match-admin-scorers-wrap, .match-admin-form-actions, .partidos-admin-status { grid-column: 1; }
+  .match-admin-score { padding: 7px; }
+  .match-admin-scorers { grid-template-columns: minmax(0, 1fr); }
+  .match-admin-scorer-select, .match-admin-field input, .match-admin-score input { min-height: 38px; font-size: 12px; }
+  .match-admin-scorer-control .match-admin-secondary { min-height: 38px; }
+  .match-admin-primary, .match-admin-secondary { min-height: 38px; font-size: 10px; }
+  .manual-goal-row { grid-template-columns: minmax(0, 1fr) 60px auto; gap: 5px; padding: 7px; }
+  .manual-goal-copy strong { font-size: 9px; }
+  .manual-goal-copy small { font-size: 8px; }
+  .match-admin-actions { justify-content: flex-start; }
+  .match-admin-actions button { min-height: 32px; }
+  .match-row { grid-template-rows: auto auto auto; }
+}
+@keyframes notification-target-pulse {
+  0%, 100% { outline: 0 solid transparent; outline-offset: 2px; box-shadow: none; }
+  18%, 62% { outline: 3px solid #2c8df1; outline-offset: 2px; box-shadow: 0 0 0 5px rgba(44, 141, 241, .14); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notification-target { animation: none; outline: 2px solid #2c8df1; outline-offset: 2px; }
+}
+
+@media (max-width: 360px) {
+  :root { --home-icon-gap: 0px; }
+  .home-pages { right: 32px; }
+  .shape.is-open .home-pages {
+    grid-template-columns: calc(var(--panel-width, 243px) - 32px) var(--panel-width, 243px);
+  }
+  .home-right-rail { top: 7px; right: 2px; bottom: 7px; width: 28px; }
+  .home-time { width: 28px; margin-top: 4px; font-size: 9px; }
+  .home-notification-button { width: 28px; height: 28px; flex-basis: 28px; margin-top: 4px; }
+  .home-notification-button svg { width: 16px; height: 16px; }
+  .score-widget {
+    left: 0;
+    top: 8px;
+    width: 100%;
+    gap: 3px;
+    padding: 5px;
+    border-radius: 9px;
+  }
+  .score-widget-title { gap: 3px; font-size: 8px; white-space: nowrap; }
+  .score-widget-title span { font-size: 9px; }
+  .score-widget-row {
+    min-height: 0;
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 3px 4px;
+    border-radius: 6px;
+  }
+  .score-widget-grade { align-self: center; flex: 0 0 auto; font-size: 8px; }
+  .widget-stats {
+    display: grid;
+    width: 100%;
+    flex: 0 0 auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .widget-stat {
+    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    font-size: 7px;
+    white-space: nowrap;
+  }
+  .widget-stat > span { font-size: 7px; }
+  .widget-stat > span::after { content: none; }
+  .widget-stats .score-widget-number {
+    min-width: 22px;
+    width: 22px;
+    height: 18px;
+    padding: 0 2px;
+    border-radius: 5px;
+    font-size: 11px;
+  }
+  .home-app-grid { left: 50%; bottom: 7px; gap: 0; transform: translateX(-50%); }
+  .app-icon--goles svg, .app-icon--objetivos svg, .app-icon--perfil svg,
+  .app-icon--fantasy svg, .app-icon--predicciones svg, .app-icon--enjuego svg,
+  .app-icon--reino svg { width: 16px; height: 16px; }
+  .recent-dock { gap: 4px; }
+  .recent-app { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 7px; }
+  .recent-app svg { width: 16px; height: 16px; }
+}
+
+@media (max-width: 460px) {
+  .home-app-grid { left: 50%; width: max-content; transform: translateX(-50%); }
+  .home-app { box-sizing: border-box; align-items: center; justify-content: center; }
+  .app-icon { display: grid; flex: 0 0 auto; place-items: center; margin-inline: auto; }
+  .app-icon svg { display: block; flex: 0 0 auto; }
+}
+
+@media (max-width: 600px) {
+  .matches-close,
+  .objective-form-row button,
+  .kingdom-content button,
+  .fantasy-action-button {
+    min-height: 32px;
+    padding: 0 10px;
+    border-radius: 9px;
+    font-size: 9px;
+  }
+  .fantasy-player-goals-link { min-height: 30px; padding: 0 10px; font-size: 9px; }
+  .fantasy-invest-input,
+  .kingdom-admin-row input,
+  .kingdom-admin-row select,
+  .kingdom-content input,
+  .kingdom-content textarea,
+  .kingdom-content select,
+  .objective-form input { min-height: 32px; padding: 6px 8px; font-size: 9px; }
+}
+
+/* 3DS-inspired stack menus keep each app choice on its own screen. */
+.app-stack-menu {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+  padding: 12px 16px;
+}
+.app-stack-menu[hidden], .app-stack-header[hidden] { display: none !important; }
+.app-stack-menu-row {
+  display: grid;
+  min-height: 48px;
+  flex: 0 0 auto;
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid rgba(94, 152, 192, .25);
+  border-radius: 13px;
+  background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(239,248,255,.92));
+  box-shadow: 0 2px 4px rgba(34,77,110,.1), inset 0 1px 0 #fff;
+  color: #183951;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.app-stack-menu-row:hover { border-color: rgba(53, 142, 207, .62); box-shadow: 0 4px 9px rgba(34,77,110,.16), inset 0 1px 0 #fff; }
+.app-stack-menu-row:active { transform: scale(.985); }
+.app-stack-menu-row:focus-visible, .app-stack-back:focus-visible { outline: 2px solid #1676e8; outline-offset: 2px; }
+.app-stack-menu-row[hidden] { display: none !important; }
+.app-stack-menu-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.8);
+  border-radius: 9px;
+  background: var(--menu-icon-color, #268add);
+  box-shadow: 0 2px 4px rgba(21,64,97,.22), inset 0 1px 0 rgba(255,255,255,.38);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1;
+  text-align: center;
+}
+.app-stack-menu-copy { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.app-stack-menu-copy strong { overflow: hidden; color: #183951; font-size: 12px; font-weight: 750; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.app-stack-menu-copy small { overflow: hidden; color: #668096; font-size: 9px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.app-stack-menu-row > svg { width: 17px; height: 17px; fill: none; stroke: #6f8da2; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.app-stack-header { display: flex; min-height: 42px; flex: 0 0 42px; align-items: center; gap: 9px; padding: 5px 12px; border-bottom: 1px solid rgba(132,168,194,.28); background: rgba(246,251,255,.78); }
+.app-stack-back { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; padding: 0; border: 0; border-radius: 9px; background: #e2f1fc; color: #1768ae; cursor: pointer; }
+.app-stack-back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.app-stack-title { min-width: 0; margin: 0; overflow: hidden; color: #173950; font-size: 13px; font-weight: 780; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.app-stack-container-hidden, .app-stack-panel-hidden { display: none !important; }
+.app-stack-container { min-width: 0; min-height: 0; }
+.app-stack-panel { min-width: 0; }
+.app-stack-detail .app-stack-container:not(.app-stack-container-hidden) { min-height: 0; flex: 1 1 auto; }
+.app-screen.is-stack-detail, .fantasy-app.is-stack-detail, .kingdom-app.is-stack-detail, .competition-app.is-stack-detail { display: flex; flex-direction: column; }
+.app-stack-detail .app-screen-content, .app-stack-detail .goles-content, .app-stack-detail .objetivos-content, .app-stack-detail .perfil-content, .app-stack-detail .fantasy-content, .app-stack-detail .kingdom-content, .app-stack-detail .competition-content { min-height: 0; overflow: hidden; }
+.app-screen .app-stack-menu, .fantasy-app .app-stack-menu, .kingdom-app .app-stack-menu, .competition-app .app-stack-menu { min-width: 0; }
+.app-stack-list-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.partidos-content { overflow: hidden; }
+.partidos-trends { grid-column: 1 / -1; min-width: 0; }
+.partidos-admin-panel { min-height: 0; overflow-y: auto; }
+#partidos-app[data-stack-page="tendencias"] .partidos-content { display: block; }
+#partidos-app[data-stack-page="tendencias"] .trend-graphs { height: 100%; align-content: center; }
+#partidos-app[data-stack-page="gestion"] .partidos-content { display: flex; flex-direction: column; }
+#partidos-app[data-stack-page="partidos"] .matches-view { position: relative; inset: auto; z-index: auto; min-height: 0; flex: 1 1 auto; overflow: hidden; padding: 12px; }
+#partidos-app[data-stack-page="partidos"] .matches-view-head { display: none; }
+#matches-list, #goles-player-list, #goles-detail-matches, #objective-list-section .objective-list, #fantasy-market, #fantasy-roster, #fantasy-transfer-requests, #fantasy-outgoing-offers, #fantasy-activity, #my-bets, #assignment-list, #kingdom-web-version-list, #kingdom-user-list, #kingdom-player-list, #kingdom-request-list, #kingdom-user-requests, #kingdom-announcement-list, #kingdom-activity-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.goal-player-detail[hidden] { display: none !important; }
+.goal-player-detail { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; align-items: center; gap: 6px; overflow: hidden; padding: 8px 12px 4px; }
+.goal-player-detail-head { display: flex; align-items: center; gap: 10px; align-self: stretch; }
+.goal-player-avatar { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 11px; background: linear-gradient(145deg,#eaf7ff,#c6e6fc); font-size: 21px; }
+.goal-player-detail-head h2 { margin: 0; color: #193d58; font-size: 13px; }
+.goal-player-detail-head p { margin: 2px 0 0; color: #71869a; font-size: 9px; }
+.goal-total { color: #1676e8; font-size: clamp(48px, 14vw, 70px); font-weight: 850; line-height: .95; font-variant-numeric: tabular-nums; text-shadow: 0 3px 10px rgba(26,107,179,.16); }
+.goal-total-label { color: #5e7488; font-size: 10px; font-weight: 700; }
+.goal-player-detail > h3 { align-self: flex-start; margin: 4px 0 0; color: #284b66; font-size: 10px; }
+.goal-player-detail .player-match-list { width: 100%; flex: 1 1 auto; }
+.goal-player-detail .player-match-button { min-height: 42px; }
+.profile-customization-form { display: grid; grid-template-columns: minmax(0,1fr); gap: 7px; }
+.profile-customization-form > label { color: #526a80; font-size: 10px; font-weight: 700; }
+.profile-customization-form > input[type="text"] { min-height: 36px; padding: 7px 10px; border: 1px solid #d6e3ee; border-radius: 10px; background: #fff; color: #173950; font: 600 12px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+.profile-color-row { display: flex; align-items: center; gap: 9px; color: #667c90; font-size: 10px; }
+.profile-color-row input[type="color"] { width: 44px; height: 36px; padding: 3px; border: 1px solid #d6e3ee; border-radius: 10px; background: #fff; cursor: pointer; }
+.profile-customization-form > button { min-height: 36px; border: 0; border-radius: 10px; background: #1676e8; color: #fff; font: 700 11px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor: pointer; }
+#goles-app.is-stack-detail .goles-content { display: flex; flex-direction: column; }
+@media (max-width: 600px) {
+  .app-stack-menu { justify-content: center; gap: 5px; padding: 8px 10px; }
+  .app-stack-menu-row { min-height: 40px; grid-template-columns: 30px minmax(0,1fr) 15px; gap: 8px; padding: 5px 8px; border-radius: 11px; }
+  .app-stack-menu-icon { width: 28px; height: 28px; border-radius: 8px; font-size: 14px; }
+  .app-stack-menu-copy strong { font-size: 10px; }
+  .app-stack-menu-copy small { font-size: 8px; }
+  .app-stack-header { min-height: 38px; flex-basis: 38px; padding: 4px 9px; }
+  .app-stack-back { width: 30px; height: 30px; flex-basis: 30px; }
+  .app-stack-title { font-size: 11px; }
+  .partidos-content { padding: 7px; }
+  .goal-player-detail { padding: 6px 8px 2px; }
+  .goal-total { font-size: clamp(46px, 17vw, 62px); }
+}

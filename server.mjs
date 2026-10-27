@@ -6,7 +6,7 @@ import { onRequest } from "./functions/api/[[path]].ts";
 
 const app = express();
 const port = Number(process.env.PORT ?? 10000);
-const distDirectory = resolve("dist");
+const siteDirectory = resolve("render-static");
 const redisUrl = process.env.REDIS_URL;
 
 if (!redisUrl) {
@@ -84,6 +84,48 @@ app.use(async (request, response, next) => {
   }
 });
 
+app.use("/firebase/database", express.raw({ type: "*/*", limit: "6mb" }));
+app.use("/firebase/database", async (request, response) => {
+  if (request.method === "OPTIONS") return response.sendStatus(204);
+  const allowedMethods = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+  if (!allowedMethods.has(request.method)) return response.status(405).json({ error: "Método no permitido." });
+
+  try {
+    const prefix = "/firebase/database";
+    const remainder = request.originalUrl.slice(prefix.length) || "/.json";
+    if (!remainder.startsWith("/")) return response.status(404).json({ error: "No se encontró el recurso." });
+    const databaseOrigin = new URL(env.FIREBASE_DATABASE_URL);
+    const target = new URL(remainder, `${databaseOrigin.origin}/`);
+    if (target.origin !== databaseOrigin.origin || !target.pathname.endsWith(".json")) {
+      return response.status(404).json({ error: "No se encontró el recurso." });
+    }
+
+    const headers = new Headers();
+    for (const name of ["accept", "content-type", "if-match", "if-none-match", "x-firebase-etag", "x-firebase-range"]) {
+      const value = request.get(name);
+      if (value) headers.set(name, value);
+    }
+    const body = Buffer.isBuffer(request.body) ? request.body : undefined;
+    const upstream = await fetch(target, {
+      method: request.method,
+      headers,
+      ...(body && request.method !== "GET" && request.method !== "HEAD" ? { body } : {}),
+    });
+    response.status(upstream.status);
+    response.setHeader("Content-Type", upstream.headers.get("Content-Type") ?? "application/json; charset=utf-8");
+    response.setHeader("Cache-Control", "no-store");
+    for (const name of ["etag", "x-firebase-etag", "x-firebase-range"]) {
+      const value = upstream.headers.get(name);
+      if (value) response.setHeader(name, value);
+    }
+    if (request.method === "HEAD") return response.end();
+    response.send(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    console.error("Firebase Realtime Database proxy failed:", error instanceof Error ? error.message : "unknown error");
+    response.status(502).json({ error: "Firebase Realtime Database no está disponible." });
+  }
+});
+
 app.use("/api", express.raw({ type: "*/*", limit: "6mb" }));
 app.use("/api", async (request, response) => {
   try {
@@ -120,12 +162,11 @@ app.use("/api", async (request, response) => {
   }
 });
 
-app.use(express.static(distDirectory, {
+app.use(express.static(siteDirectory, {
   index: false,
-  maxAge: "1y",
-  immutable: true,
+  maxAge: 0,
   setHeaders(response, filePath) {
-    if (filePath.endsWith("index.html")) response.setHeader("Cache-Control", "no-cache");
+    response.setHeader("Cache-Control", "no-cache");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   },
@@ -135,7 +176,7 @@ app.use(async (request, response, next) => {
   if (request.method !== "GET" && request.method !== "HEAD") return next();
   if (extname(request.path)) return next();
   try {
-    const indexHtml = await readFile(resolve(distDirectory, "index.html"));
+    const indexHtml = await readFile(resolve(siteDirectory, "index.html"));
     response.setHeader("Cache-Control", "no-cache");
     response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
