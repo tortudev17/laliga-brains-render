@@ -1,0 +1,374 @@
+* { box-sizing: border-box; }
+
+:root {
+  color-scheme: light;
+  --page-blue: #a4d8f7;
+  --screen-black: #030405;
+  --fold-duration: 850ms;
+  --fold-easing: cubic-bezier(.65, 0, .35, 1);
+  --screen-radius: 32px;
+}
+
+html, body {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow: hidden;
+  background-color: var(--page-blue);
+  color: #000;
+  font-family: Inter, "Avenir Next", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+body::before,
+body::after {
+  display: none;
+}
+
+.app-shell {
+  position: relative;
+  z-index: 0;
+  display: grid;
+  min-height: 100vh;
+  min-height: 100svh;
+  place-items: center;
+  overflow: hidden;
+  padding: 16px;
+}
+.app-shell.phone-open { padding: 0; }
+
+.shape {
+  position: relative;
+  display: block;
+  width: var(--closed-width, 243px);
+  height: var(--device-height, 341px);
+  flex: none;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0 var(--closed-corner-radius, 26px) var(--closed-corner-radius, 26px) 0;
+  background: var(--screen-black);
+  box-shadow: 0 14px 38px rgba(25, 71, 98, .2);
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  touch-action: manipulation;
+  transition: width var(--fold-duration) var(--fold-easing), height var(--fold-duration) var(--fold-easing), border-radius var(--fold-duration) var(--fold-easing), opacity 220ms ease, transform 220ms ease, visibility 0s;
+  -webkit-tap-highlight-color: transparent;
+}
+.app-shell.is-auth-transition .shape { opacity: 0; transform: scale(.96); pointer-events: none; }
+
+.shape.is-open {
+  width: 100vw;
+  height: 100vh;
+  height: 100svh;
+  border-radius: 0;
+}
+.shape.is-settled { overflow: clip; border-radius: 0; }
+.shape.is-app-open .fold-toggle { pointer-events: none; }
+.shape.is-open .fold-toggle { pointer-events: none; }
+.app-shell.auth-active .fold-toggle { pointer-events: none; }
+.fold-toggle:focus-visible { outline: 2px solid #53636b; outline-offset: 3px; }
+
+.phone-canvas {
+  position: absolute;
+  inset: 1px;
+  z-index: 1;
+  display: block;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  border-radius: inherit;
+  background: var(--screen-black);
+  pointer-events: none;
+}
+.shape.is-open .phone-canvas { inset: 0; width: 100%; height: 100%; border-radius: 0; }
+
+.phone-content {
+  position: absolute;
+  inset: 1px;
+  z-index: 3;
+  display: block;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  border: 0;
+  border-radius: inherit;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+.shape.has-content .phone-content { opacity: 1; }
+.shape.is-open.has-content .phone-content { pointer-events: auto; }
+.shape.is-open .phone-content { inset: 0; width: 100%; height: 100%; border-radius: 0; }
+
+.app-transition {
+  position: absolute;
+  inset: 1px;
+  z-index: 5;
+  border-radius: inherit;
+  background: #fff;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 100ms linear, visibility 0s linear 100ms;
+}
+.shape.is-open .app-transition { inset: 0; border-radius: 0; }
+.shape.is-app-launching .app-transition {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.fold-toggle {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.shape.is-open .fold-toggle {
+  right: auto;
+  left: calc(50% - 22px);
+  width: 44px;
+}
+
+.shape-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: var(--panel-width, 243px);
+  height: 100%;
+  border: 0;
+  border-radius: 0 var(--closed-corner-radius, 26px) var(--closed-corner-radius, 26px) 0;
+  background: transparent;
+  pointer-events: none;
+  backface-visibility: visible;
+  transition: left var(--fold-duration) var(--fold-easing), transform var(--fold-duration) var(--fold-easing), border-radius var(--fold-duration) var(--fold-easing);
+}
+
+.shape-panel::before,
+.shape-panel::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  border-radius: inherit;
+  background: linear-gradient(145deg, rgba(255,255,255,.035), transparent 42%), var(--screen-black);
+  clip-path: inset(0 round 0 var(--closed-corner-radius, 26px) var(--closed-corner-radius, 26px) 0);
+  backface-visibility: hidden;
+  opacity: 1;
+  pointer-events: none;
+  transition: opacity 100ms linear, border-radius var(--fold-duration) var(--fold-easing), clip-path var(--fold-duration) var(--fold-easing);
+}
+
+.shape-panel::after { transform: rotateY(180deg); }
+.shape-panel-back { z-index: 0; }
+.shape-panel-front {
+  z-index: 1;
+  transform-style: preserve-3d;
+  transform-origin: left center;
+  transform: rotateY(0deg);
+}
+
+.shape.is-open .shape-panel-back {
+  left: calc(var(--panel-width, 243px) - 2px);
+  width: calc(var(--panel-width, 243px) + 2px);
+  border-radius: 0 var(--open-corner-radius, 42px) var(--open-corner-radius, 42px) 0;
+}
+
+.shape.is-open .shape-panel-front {
+  left: var(--panel-width, 243px);
+  transform: rotateY(-180deg);
+  border-radius: 0 var(--open-corner-radius, 42px) var(--open-corner-radius, 42px) 0;
+}
+
+.shape.is-open .shape-panel-back::before {
+  border-radius: 0 var(--open-corner-radius, 42px) var(--open-corner-radius, 42px) 0;
+  clip-path: inset(0 round 0 var(--open-corner-radius, 42px) var(--open-corner-radius, 42px) 0);
+}
+
+.shape.is-open .shape-panel-front::after {
+  border-radius: var(--open-corner-radius, 42px) 0 0 var(--open-corner-radius, 42px);
+  clip-path: inset(0 round var(--open-corner-radius, 42px) 0 0 var(--open-corner-radius, 42px));
+}
+
+.shape.is-settled .shape-panel::before,
+.shape.is-settled .shape-panel::after,
+.shape.is-closed-settled .shape-panel::before,
+.shape.is-closed-settled .shape-panel::after { opacity: 0; }
+
+.shape::after {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: 1px solid rgba(95, 105, 110, .85);
+  border-radius: 0 var(--closed-corner-radius, 26px) var(--closed-corner-radius, 26px) 0;
+  content: "";
+  pointer-events: none;
+  transition: border-radius var(--fold-duration) var(--fold-easing);
+}
+.shape.is-open::after { border-color: transparent; border-radius: 0; }
+
+.username-prompt {
+  position: absolute;
+  inset: 1px;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: clamp(10px, 3vw, 24px);
+  border-radius: inherit;
+  background: rgba(0, 0, 0, .48);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: auto;
+  transition: opacity 180ms ease, visibility 0s linear 180ms;
+}
+.username-prompt.is-visible { opacity: 1; visibility: visible; transition-delay: 0s; }
+.username-prompt[hidden] { display: none; }
+
+.username-card {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 460px);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 28px;
+  border: 0;
+  border-radius: var(--screen-radius);
+  background: var(--page-blue);
+  color: #000;
+  box-shadow: 0 22px 70px rgba(0,0,0,.28);
+  transform: translateY(8px);
+  transition: transform 180ms ease;
+  pointer-events: auto;
+}
+.username-prompt.is-visible .username-card { transform: translateY(0); }
+.username-card.is-restoring { align-content: center; min-height: 116px; text-align: center; }
+.username-card.is-restoring > :not(.username-status) { display: none !important; }
+.username-card.is-restoring .username-status { font-size: 18px; font-weight: 600; }
+.username-card label { font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+.username-status { margin: 0; font-size: 14px; line-height: 1.45; }
+.username-card.is-loading .username-status { display: flex; align-items: center; gap: 9px; }
+.username-card.is-loading .username-status::before {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid rgba(0,0,0,.22);
+  border-top-color: #000;
+  border-radius: 50%;
+  content: "";
+  animation: auth-spin 720ms linear infinite;
+}
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+.username-card input,
+.username-card select,
+.username-card button {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  font: inherit;
+}
+.username-card input {
+  background: #fff;
+  color: #000;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 16px;
+  letter-spacing: .035em;
+}
+.username-card input::placeholder { color: rgba(0,0,0,.48); }
+.username-card input:focus-visible,
+.username-card button:focus-visible,
+.username-card select:focus-visible {
+  outline: 3px solid #1769e0;
+  outline-offset: 3px;
+}
+.username-card button {
+  background: #000;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.username-card button:disabled { cursor: wait; opacity: .65; }
+.username-card .back-button {
+  justify-self: start;
+  width: auto;
+  min-height: 36px;
+  padding: 0;
+  background: transparent;
+  color: #000;
+  text-align: left;
+  font-size: 14px;
+}
+.membership-select-wrap { position: relative; }
+.membership-select-wrap select {
+  appearance: none;
+  padding-right: 44px;
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+}
+.membership-chevron {
+  position: absolute;
+  top: 50%;
+  right: 18px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid #000;
+  border-bottom: 2px solid #000;
+  pointer-events: none;
+  transform: translateY(-70%) rotate(45deg);
+}
+.create-account-link { color: #000; font-size: 14px; line-height: 1.45; text-underline-offset: 3px; }
+
+.auth-notice {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 11;
+  width: min(520px, calc(100% - 32px));
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: #000;
+  color: #fff;
+  line-height: 1.45;
+  box-shadow: 0 12px 36px rgba(0,0,0,.24);
+  transform: translateX(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .username-card.is-loading .username-status::before { animation: none; }
+}
+.auth-notice[hidden] { display: none; }
+
+@media (max-width: 460px) {
+  .app-shell { padding: 12px; }
+  .username-prompt { padding: 16px; }
+  .username-card { gap: 11px; padding: 22px; border-radius: 18px; }
+  .username-card label { font-size: 16px; }
+  .username-card input, .username-card select, .username-card button { min-height: 46px; }
+  .create-account-link { font-size: 13px; }
+}
+@media (max-height: 580px) {
+  .username-prompt { padding: 8px; }
+  .username-card { gap: 8px; max-height: calc(100svh - 16px); padding: 16px; }
+  .username-card label { font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
