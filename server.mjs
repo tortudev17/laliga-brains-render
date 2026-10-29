@@ -1,5 +1,6 @@
 import express from "express";
 import Redis from "ioredis";
+import { Readable } from "node:stream";
 import { readFile } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import { onRequest } from "./functions/api/[[path]].ts";
@@ -67,6 +68,7 @@ app.use(async (request, response, next) => {
 
   try {
     const target = new URL(`https://${host}/v1/${endpoint}${new URL(request.originalUrl, "http://render.internal").search}`);
+    if (!target.searchParams.has("key")) target.searchParams.set("key", env.FIREBASE_API_KEY);
     const headers = new Headers({ "Content-Type": request.get("content-type") ?? "application/json" });
     const locale = request.get("x-firebase-locale");
     if (locale) headers.set("X-Firebase-Locale", locale);
@@ -106,7 +108,10 @@ app.use("/firebase/database", async (request, response) => {
       if (value) headers.set(name, value);
     }
     const body = Buffer.isBuffer(request.body) ? request.body : undefined;
+    const controller = new AbortController();
+    response.on("close", () => controller.abort());
     const upstream = await fetch(target, {
+      signal: controller.signal,
       method: request.method,
       headers,
       ...(body && request.method !== "GET" && request.method !== "HEAD" ? { body } : {}),
@@ -119,8 +124,17 @@ app.use("/firebase/database", async (request, response) => {
       if (value) response.setHeader(name, value);
     }
     if (request.method === "HEAD") return response.end();
+    if (upstream.headers.get("content-type")?.includes("text/event-stream") && upstream.body) {
+      response.setHeader("X-Accel-Buffering", "no");
+      response.flushHeaders();
+      const bodyStream = Readable.fromWeb(upstream.body);
+      bodyStream.on("error", () => response.destroy());
+      bodyStream.pipe(response);
+      return;
+    }
     response.send(Buffer.from(await upstream.arrayBuffer()));
   } catch (error) {
+    if (response.destroyed || response.headersSent) return;
     console.error("Firebase Realtime Database proxy failed:", error instanceof Error ? error.message : "unknown error");
     response.status(502).json({ error: "Firebase Realtime Database no está disponible." });
   }
@@ -161,6 +175,8 @@ app.use("/api", async (request, response) => {
     response.status(500).json({ error: "No se pudo completar la operación. Inténtalo de nuevo más tarde." });
   }
 });
+
+app.use("/manual", express.static(resolve("manual-web"), { index: "index.html", maxAge: 0 }));
 
 app.use(express.static(siteDirectory, {
   index: false,
