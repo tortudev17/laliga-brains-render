@@ -178,6 +178,10 @@ app.use("/api", async (request, response) => {
 
 app.use("/manual", express.static(resolve("manual-web"), { index: "index.html", maxAge: 0 }));
 
+// The requested app is the Render homepage; the previous site remains at /legacy.
+app.get("/", (_request, response) => response.sendFile(resolve("manual-web", "index.html")));
+app.get("/legacy", (_request, response) => response.sendFile(resolve(siteDirectory, "index.html")));
+
 app.use(express.static(siteDirectory, {
   index: false,
   maxAge: 0,
